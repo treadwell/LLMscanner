@@ -24,3 +24,11 @@ Utilities for extracting actionable items from meeting transcripts stored in a C
 - `scripts/` — automation and helpers.
 - `logs/` — generated Markdown logs.
 - `AGENTS.md` — contributor guidelines.
+
+## Nightly Automation (cron)
+- Use the helper runner: `scripts/nightly_meeting_job.sh` (includes fixed paths for Calibre and logs).
+- Suggested crontab entry (runs daily at 2:15am, logs to `logs/cron.log`):
+  ```
+  15 2 * * * /Users/kbrooks/Dropbox/Projects/LLMscanner/scripts/nightly_meeting_job.sh
+  ```
+- Ensure the script is executable (`chmod +x scripts/nightly_meeting_job.sh`) and that `python3` lives at `/Library/Frameworks/Python.framework/Versions/3.11/bin/python3` (override with `PYTHON_BIN` env var in the crontab line if needed).
