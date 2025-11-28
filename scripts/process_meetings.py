@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import json
+import os
 import re
 import sqlite3
 import sys
@@ -28,10 +30,11 @@ class Meeting:
 
 @dataclass
 class Item:
-    kind: str  # "risk", "issue", "task"
+    kind: str  # "risk", "issue", "task", "development"
     summary: str
     owner: str
     meeting: Meeting
+    due: Optional[str] = None
 
 
 def parse_args() -> argparse.Namespace:
@@ -68,6 +71,23 @@ def parse_args() -> argparse.Namespace:
         "--dry-run",
         action="store_true",
         help="Print actions without writing log files.",
+    )
+    parser.add_argument(
+        "--llm",
+        choices=["none", "openai"],
+        default="none",
+        help="Use an LLM for extraction instead of keyword heuristics.",
+    )
+    parser.add_argument(
+        "--llm-model",
+        default="gpt-4o-mini",
+        help="LLM model name (when --llm=openai).",
+    )
+    parser.add_argument(
+        "--llm-max-chars",
+        type=int,
+        default=12000,
+        help="Max characters from the transcript to send to the LLM (to control token costs).",
     )
     return parser.parse_args()
 
@@ -194,10 +214,73 @@ def split_sentences(text: str) -> List[str]:
     return sentences
 
 
+def llm_extract_items_openai(
+    text: str, meeting: Meeting, model: str, max_chars: int
+) -> List[Item]:
+    """Call OpenAI to extract items. Requires OPENAI_API_KEY."""
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY not set; cannot use LLM extraction.")
+    try:
+        from openai import OpenAI  # type: ignore
+    except Exception as exc:
+        raise RuntimeError("openai package not installed") from exc
+
+    trimmed_text = text[:max_chars]
+    system_prompt = (
+        "Extract actionable items from the provided meeting transcript. "
+        "Return JSON ONLY: an array of objects with fields: "
+        "`type` (risk|issue|task|development), `summary`, `owner` (person or 'Unassigned'), "
+        "`due` (optional date or empty string). Keep summaries concise and concrete."
+    )
+    user_prompt = f"Meeting: {meeting.title} ({meeting.meeting_date})\nTranscript:\n{trimmed_text}"
+    client = OpenAI(api_key=api_key)
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=0.2,
+        max_tokens=800,
+    )
+    content = response.choices[0].message.content or "[]"
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"LLM returned non-JSON content: {content}") from exc
+
+    items: List[Item] = []
+    if not isinstance(data, list):
+        return items
+    for obj in data:
+        if not isinstance(obj, dict):
+            continue
+        kind = normalize_text(obj.get("type", ""))
+        if kind not in {"risk", "issue", "task", "development"}:
+            continue
+        summary = obj.get("summary", "")
+        owner = obj.get("owner", "Unassigned") or "Unassigned"
+        due = obj.get("due") or None
+        if not summary:
+            continue
+        items.append(
+            Item(
+                kind=kind,
+                summary=summary.strip(),
+                owner=owner.strip(),
+                meeting=meeting,
+                due=due.strip() if isinstance(due, str) else None,
+            )
+        )
+    return items
+
+
 def classify_sentences(sentences: Iterable[str], meeting: Meeting) -> List[Item]:
     task_kw = ("action", "follow up", "follow-up", "todo", "task", "next step", "next steps", "takeaway")
     risk_kw = ("risk", "concern", "blocker", "dependency", "exposure", "mitigation")
     issue_kw = ("issue", "problem", "bug", "error", "failing", "outage")
+    dev_kw = ("coaching", "training", "mentorship", "feedback", "growth")
     items: List[Item] = []
     seen: set[Tuple[str, str]] = set()
 
@@ -210,6 +293,8 @@ def classify_sentences(sentences: Iterable[str], meeting: Meeting) -> List[Item]
             label = "issue"
         elif any(k in s_norm for k in task_kw):
             label = "task"
+        elif any(k in s_norm for k in dev_kw):
+            label = "development"
         if not label:
             continue
         key = (label, s_norm)
@@ -262,6 +347,9 @@ def merge_items(
     prefix: str,
     headers: List[str],
     key_fields: Tuple[str, ...],
+    owner_field: str = "Owner",
+    desc_field: str = "Description",
+    meeting_field: str = "Meeting",
 ) -> List[Dict[str, str]]:
     if not headers:
         return rows
@@ -274,14 +362,16 @@ def merge_items(
         candidate = {
             "ID": "",
             "Date": item.meeting.meeting_date.strftime(DATE_FMT),
-            "Meeting": item.meeting.title,
-            "Owner": item.owner,
-            "Description": item.summary,
+            meeting_field: item.meeting.title,
+            owner_field: item.owner,
+            desc_field: item.summary,
             "Status": "open",
             "Incidents": "1",
         }
         if item.kind == "task":
-            candidate["Meeting"] = f"{item.meeting.title} ({item.meeting.tag})"
+            candidate[meeting_field] = f"{item.meeting.title} ({item.meeting.tag})"
+            if item.due and "Due" in headers:
+                candidate["Due"] = item.due
         key = tuple(normalize_text(candidate.get(field, "")) for field in key_fields)
         if key in existing_index:
             row = existing_index[key]
@@ -343,7 +433,14 @@ def process(args: argparse.Namespace) -> None:
             print(f"Skipping {meeting.title}: no searchable text available.")
             continue
         sentences = split_sentences(text)
-        items = classify_sentences(sentences, meeting)
+        if args.llm == "openai":
+            try:
+                items = llm_extract_items_openai(text, meeting, args.llm_model, args.llm_max_chars)
+            except Exception as exc:
+                print(f"LLM extraction failed for {meeting.title}: {exc}")
+                items = []
+        else:
+            items = classify_sentences(sentences, meeting)
         if not items:
             print(f"No actionable items found in {meeting.title}.")
             continue
@@ -358,6 +455,7 @@ def process(args: argparse.Namespace) -> None:
     risks = [i for i in all_items if i.kind == "risk"]
     issues = [i for i in all_items if i.kind == "issue"]
     tasks = [i for i in all_items if i.kind == "task"]
+    devs = [i for i in all_items if i.kind == "development"]
 
     # Load and merge risks
     risk_headers, risk_rows = load_log_table(log_dir / "risks.md")
@@ -378,15 +476,34 @@ def process(args: argparse.Namespace) -> None:
         task_rows = []
     task_rows = merge_items(task_rows, tasks, "T", task_headers, ("Owner", "Description"))
 
+    dev_headers, dev_rows = load_log_table(log_dir / "development_opportunities.md")
+    if not dev_headers:
+        dev_headers = ["ID", "Date", "Person", "Area", "Meeting", "Status", "Incidents"]
+        dev_rows = []
+    dev_rows = merge_items(
+        dev_rows,
+        devs,
+        "D",
+        dev_headers,
+        ("Area",),
+        owner_field="Person",
+        desc_field="Area",
+        meeting_field="Meeting",
+    )
+
     if args.dry_run:
         print(f"[dry-run] Would write {len(risk_rows)} risks, {len(issue_rows)} issues, {len(task_rows)} tasks.")
     else:
         write_log(log_dir / "risks.md", risk_headers, risk_rows)
         write_log(log_dir / "issues.md", issue_headers, issue_rows)
         write_log(log_dir / "tasks.md", task_headers, task_rows)
+        write_log(log_dir / "development_opportunities.md", dev_headers, dev_rows)
 
     update_development_log(log_dir / "development.md", meetings, args.dry_run)
-    print(f"Processed {len(meetings)} meeting(s): {len(risks)} risks, {len(issues)} issues, {len(tasks)} tasks.")
+    print(
+        f"Processed {len(meetings)} meeting(s): {len(risks)} risks, "
+        f"{len(issues)} issues, {len(tasks)} tasks, {len(devs)} development items."
+    )
 
 
 def main() -> None:
