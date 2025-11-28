@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 CALIBRE_ROOT_DEFAULT = Path("/Users/kbrooks/Dropbox/Books/calibreGPT_test_lg")
-MEETING_TAG_PREFIX = "Meetings."
+MEETING_TAG_PREFIXES_DEFAULT = ("Meetings.", "Meeting.")
 DATE_FMT = "%Y-%m-%d"
 
 
@@ -68,6 +68,18 @@ def parse_args() -> argparse.Namespace:
         help="Directory for Markdown logs.",
     )
     parser.add_argument(
+        "--author",
+        default="Tactiq",
+        help="Only process meetings where at least one author matches this name (case sensitive). Use '' to disable.",
+    )
+    parser.add_argument(
+        "--tag-prefix",
+        action="append",
+        dest="tag_prefixes",
+        default=None,
+        help="Tag prefix for meetings (repeat for multiple). Defaults to 'Meetings.' and 'Meeting.'.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print actions without writing log files.",
@@ -101,19 +113,32 @@ def normalize_text(value: str) -> str:
 
 
 def load_meetings(
-    metadata_db: Path, calibre_root: Path, start: dt.date, end: dt.date
+    metadata_db: Path,
+    calibre_root: Path,
+    start: dt.date,
+    end: dt.date,
+    tag_prefixes: Sequence[str],
+    author_filter: Optional[str],
 ) -> List[Meeting]:
     conn = sqlite3.connect(metadata_db)
     cur = conn.cursor()
+    like_clauses = " OR ".join("t.name LIKE ?" for _ in tag_prefixes)
+    params: List[str] = [f"{p}%" for p in tag_prefixes]
+    author_clause = ""
+    if author_filter:
+        author_clause = "AND a.name = ?"
+        params.append(author_filter)
     rows = cur.execute(
-        """
-        SELECT b.id, b.title, b.path, t.name
+        f"""
+        SELECT DISTINCT b.id, b.title, b.path, t.name
         FROM books b
         JOIN books_tags_link btl ON b.id = btl.book
         JOIN tags t ON t.id = btl.tag
-        WHERE t.name LIKE ?
+        LEFT JOIN books_authors_link bal ON b.id = bal.book
+        LEFT JOIN authors a ON bal.author = a.id
+        WHERE ({like_clauses}) {author_clause}
         """,
-        (f"{MEETING_TAG_PREFIX}%",),
+        params,
     ).fetchall()
     meetings: List[Meeting] = []
     for book_id, title, rel_path, tag in rows:
@@ -416,7 +441,15 @@ def process(args: argparse.Namespace) -> None:
 
     start_date = as_date(args.start)
     end_date = as_date(args.end)
-    meetings = load_meetings(metadata_db, calibre_root, start_date, end_date)
+    tag_prefixes = args.tag_prefixes or list(MEETING_TAG_PREFIXES_DEFAULT)
+    meetings = load_meetings(
+        metadata_db,
+        calibre_root,
+        start_date,
+        end_date,
+        tag_prefixes=tag_prefixes,
+        author_filter=args.author,
+    )
     if not meetings:
         print(f"No meetings tagged {MEETING_TAG_PREFIX} between {start_date} and {end_date}.")
         update_development_log(log_dir / "development.md", [], args.dry_run)

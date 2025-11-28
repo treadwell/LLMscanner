@@ -11,6 +11,7 @@ Utilities for extracting actionable items from meeting transcripts stored in a C
 ## Meeting Processing
 - Source: Calibre library at `/Users/kbrooks/Dropbox/Books/calibreGPT_test_lg`.
 - Meetings are tagged `Meetings.YYYY-MM-DD` in `metadata.db`.
+- Filters: by default, only books authored by `Tactiq` and tags starting with `Meetings.` or `Meeting.` are processed (override with `--author` and `--tag-prefix`).
 - Text is pulled from `full-text-search.db`; if absent, PDFs are attempted when `pypdf` is available.
 - Outputs: Markdown logs in `logs/` (`risks.md`, `issues.md`, `tasks.md`, `development.md`).
 
@@ -19,6 +20,8 @@ Utilities for extracting actionable items from meeting transcripts stored in a C
   `python3 scripts/process_meetings.py --start 2025-11-01 --end 2025-11-30`
 - Dry-run to preview counts:  
   `python3 scripts/process_meetings.py --dry-run`
+- Override tag/author filters, e.g.:
+  `python3 scripts/process_meetings.py --author Tactiq --tag-prefix Meetings. --tag-prefix Meeting.`
 
 ## Optional LLM Extraction
 - Enable LLM extraction (improves signal from noisy transcripts):
