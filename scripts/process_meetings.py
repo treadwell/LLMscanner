@@ -30,7 +30,7 @@ class Meeting:
 
 @dataclass
 class Item:
-    kind: str  # "risk", "issue", "task", "development"
+    kind: str  # "risk", "issue", "task", "grow", "glow"
     summary: str
     owner: str
     meeting: Meeting
@@ -255,8 +255,10 @@ def llm_extract_items_openai(
     system_prompt = (
         "Extract actionable items from the provided meeting transcript. "
         "Return JSON ONLY: an array of objects with fields: "
-        "`type` (risk|issue|task|development), `summary`, `owner` (person or 'Unassigned'), "
-        "`due` (optional date or empty string). Keep summaries concise and concrete."
+        "`type` (risk|issue|task|grow|glow), `summary`, `owner` (person or 'Unassigned'), "
+        "`due` (optional date or empty string). "
+        "Treat 'grow' as a development opportunity and 'glow' as positive feedback. "
+        "Keep summaries concise and concrete."
     )
     user_prompt = f"Meeting: {meeting.title} ({meeting.meeting_date})\nTranscript:\n{trimmed_text}"
     client = OpenAI(api_key=api_key)
@@ -282,7 +284,7 @@ def llm_extract_items_openai(
         if not isinstance(obj, dict):
             continue
         kind = normalize_text(obj.get("type", ""))
-        if kind not in {"risk", "issue", "task", "development"}:
+        if kind not in {"risk", "issue", "task", "grow", "glow"}:
             continue
         summary = obj.get("summary", "")
         owner = obj.get("owner", "Unassigned") or "Unassigned"
@@ -305,7 +307,8 @@ def classify_sentences(sentences: Iterable[str], meeting: Meeting) -> List[Item]
     task_kw = ("action", "follow up", "follow-up", "todo", "task", "next step", "next steps", "takeaway")
     risk_kw = ("risk", "concern", "blocker", "dependency", "exposure", "mitigation")
     issue_kw = ("issue", "problem", "bug", "error", "failing", "outage")
-    dev_kw = ("coaching", "training", "mentorship", "feedback", "growth")
+    dev_kw = ("coaching", "training", "mentorship", "feedback", "growth", "improve", "develop")
+    glow_kw = ("kudos", "great job", "well done", "excellent", "strong", "praise", "impressive")
     items: List[Item] = []
     seen: set[Tuple[str, str]] = set()
 
@@ -318,8 +321,10 @@ def classify_sentences(sentences: Iterable[str], meeting: Meeting) -> List[Item]
             label = "issue"
         elif any(k in s_norm for k in task_kw):
             label = "task"
+        elif any(k in s_norm for k in glow_kw):
+            label = "glow"
         elif any(k in s_norm for k in dev_kw):
-            label = "development"
+            label = "grow"
         if not label:
             continue
         key = (label, s_norm)
@@ -335,7 +340,10 @@ def classify_sentences(sentences: Iterable[str], meeting: Meeting) -> List[Item]
 def load_log_table(path: Path) -> Tuple[List[str], List[Dict[str, str]]]:
     if not path.exists():
         return [], []
-    lines = path.read_text(encoding="utf-8").splitlines()
+    return load_log_table_from_lines(path.read_text(encoding="utf-8").splitlines())
+
+
+def load_log_table_from_lines(lines: Sequence[str]) -> Tuple[List[str], List[Dict[str, str]]]:
     headers: List[str] = []
     rows: List[Dict[str, str]] = []
     for line in lines:
@@ -419,6 +427,63 @@ def write_log(path: Path, headers: Sequence[str], rows: Sequence[Dict[str, str]]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def load_development_tables(path: Path) -> Tuple[List[str], List[Dict[str, str]], List[str], List[Dict[str, str]]]:
+    if not path.exists():
+        return [], [], [], []
+    lines = path.read_text(encoding="utf-8").splitlines()
+    grows_headers: List[str] = []
+    glows_headers: List[str] = []
+    grows_rows: List[Dict[str, str]] = []
+    glows_rows: List[Dict[str, str]] = []
+    current_section: Optional[str] = None
+    buffer: List[str] = []
+
+    def flush_buffer(section: Optional[str], buf: List[str]) -> None:
+        nonlocal grows_headers, glows_headers, grows_rows, glows_rows
+        if not section or not buf:
+            return
+        headers, rows = load_log_table_from_lines(buf)
+        if section == "Grows":
+            grows_headers, grows_rows = headers, rows
+        elif section == "Glows":
+            glows_headers, glows_rows = headers, rows
+
+    for line in lines:
+        if line.startswith("## "):
+            flush_buffer(current_section, buffer)
+            current_section = line.replace("##", "").strip()
+            buffer = []
+            continue
+        if current_section in {"Grows", "Glows"}:
+            buffer.append(line)
+    flush_buffer(current_section, buffer)
+    return grows_headers, grows_rows, glows_headers, glows_rows
+
+
+def write_development_tables(
+    path: Path,
+    grows_headers: Sequence[str],
+    grows_rows: Sequence[Dict[str, str]],
+    glows_headers: Sequence[str],
+    glows_rows: Sequence[Dict[str, str]],
+) -> None:
+    sections = []
+    sections.append("# Development\n")
+    sections.append("## Grows")
+    sections.append("| " + " | ".join(grows_headers) + " |")
+    sections.append("|" + "|".join(["---"] * len(grows_headers)) + "|")
+    for row in grows_rows:
+        sections.append("| " + " | ".join(row.get(h, "") for h in grows_headers) + " |")
+
+    sections.append("\n## Glows")
+    sections.append("| " + " | ".join(glows_headers) + " |")
+    sections.append("|" + "|".join(["---"] * len(glows_headers)) + "|")
+    for row in glows_rows:
+        sections.append("| " + " | ".join(row.get(h, "") for h in glows_headers) + " |")
+
+    path.write_text("\n".join(sections) + "\n", encoding="utf-8")
+
+
 def update_development_log(path: Path, meetings: List[Meeting], dry_run: bool) -> None:
     headers, rows = load_log_table(path)
     if not headers:
@@ -488,7 +553,8 @@ def process(args: argparse.Namespace) -> None:
     risks = [i for i in all_items if i.kind == "risk"]
     issues = [i for i in all_items if i.kind == "issue"]
     tasks = [i for i in all_items if i.kind == "task"]
-    devs = [i for i in all_items if i.kind == "development"]
+    grows = [i for i in all_items if i.kind == "grow"]
+    glows = [i for i in all_items if i.kind == "glow"]
 
     # Load and merge risks
     risk_headers, risk_rows = load_log_table(log_dir / "risks.md")
@@ -509,33 +575,50 @@ def process(args: argparse.Namespace) -> None:
         task_rows = []
     task_rows = merge_items(task_rows, tasks, "T", task_headers, ("Owner", "Description"))
 
-    dev_headers, dev_rows = load_log_table(log_dir / "development_opportunities.md")
-    if not dev_headers:
-        dev_headers = ["ID", "Date", "Person", "Area", "Meeting", "Status", "Incidents"]
-        dev_rows = []
-    dev_rows = merge_items(
-        dev_rows,
-        devs,
-        "D",
-        dev_headers,
+    grows_headers, grows_rows, glows_headers, glows_rows = load_development_tables(log_dir / "development.md")
+    if not grows_headers:
+        grows_headers = ["ID", "Person", "Area", "Meeting", "Date", "Status", "Incidents"]
+        grows_rows = []
+    if not glows_headers:
+        glows_headers = ["ID", "Person", "Note", "Meeting", "Date", "Status", "Incidents"]
+        glows_rows = []
+
+    grows_rows = merge_items(
+        grows_rows,
+        grows,
+        "G",
+        grows_headers,
         ("Area",),
         owner_field="Person",
         desc_field="Area",
         meeting_field="Meeting",
     )
+    glows_rows = merge_items(
+        glows_rows,
+        glows,
+        "GL",
+        glows_headers,
+        ("Note",),
+        owner_field="Person",
+        desc_field="Note",
+        meeting_field="Meeting",
+    )
 
     if args.dry_run:
-        print(f"[dry-run] Would write {len(risk_rows)} risks, {len(issue_rows)} issues, {len(task_rows)} tasks.")
+        print(
+            f"[dry-run] Would write {len(risk_rows)} risks, {len(issue_rows)} issues, "
+            f"{len(task_rows)} tasks, {len(grows_rows)} grows, {len(glows_rows)} glows."
+        )
     else:
         write_log(log_dir / "risks.md", risk_headers, risk_rows)
         write_log(log_dir / "issues.md", issue_headers, issue_rows)
         write_log(log_dir / "tasks.md", task_headers, task_rows)
-        write_log(log_dir / "development_opportunities.md", dev_headers, dev_rows)
+        write_development_tables(log_dir / "development.md", grows_headers, grows_rows, glows_headers, glows_rows)
 
-    update_development_log(log_dir / "development.md", meetings, args.dry_run)
+    update_development_log(log_dir / "development_runs.md", meetings, args.dry_run)
     print(
         f"Processed {len(meetings)} meeting(s): {len(risks)} risks, "
-        f"{len(issues)} issues, {len(tasks)} tasks, {len(devs)} development items."
+        f"{len(issues)} issues, {len(tasks)} tasks, {len(grows)} grows, {len(glows)} glows."
     )
 
 

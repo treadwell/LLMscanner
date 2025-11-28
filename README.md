@@ -13,7 +13,7 @@ Utilities for extracting actionable items from meeting transcripts stored in a C
 - Meetings are tagged `Meetings.YYYY-MM-DD` in `metadata.db`.
 - Filters: by default, only books authored by `Tactiq` and tags starting with `Meetings.` or `Meeting.` are processed (override with `--author` and `--tag-prefix`).
 - Text is pulled from `full-text-search.db`; if absent, PDFs are attempted when `pypdf` is available.
-- Outputs: Markdown logs in `logs/` (`risks.md`, `issues.md`, `tasks.md`, `development.md`).
+- Outputs: Markdown logs in `logs/` (`risks.md`, `issues.md`, `tasks.md`, `development.md` for grows/glows, `development_runs.md` for run history).
 
 ## Customize Date Range
 - Include start/end dates:  
@@ -30,7 +30,8 @@ Utilities for extracting actionable items from meeting transcripts stored in a C
   python3 scripts/process_meetings.py --llm openai --llm-model gpt-4o-mini
   ```
 - The script defaults to keyword heuristics when `--llm` is `none`. LLM mode truncates transcripts to `--llm-max-chars` (default 12,000) to control tokens.
-- Extracted types: risks, issues, tasks, and people development opportunities (logged to `logs/development_opportunities.md`).
+- Extracted types: risks, issues, tasks, and people development items: `grows` (coaching/development) and `glows` (praise). Grows/Glows live in `logs/development.md`; a run log lives in `logs/development_runs.md`.
+- LLM mode requires outbound network access to `api.openai.com` and a valid `OPENAI_API_KEY` in the environment (see `.env.example`).
 
 ## File Layout
 - `scripts/` — automation and helpers.
