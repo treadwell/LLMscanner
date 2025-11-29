@@ -15,6 +15,7 @@ Utilities for extracting actionable items from meeting transcripts stored in a C
 - Filters: by default, only books authored by `Tactiq` and tags starting with `Meetings.` or `Meeting.` are processed (override with `--author` and `--tag-prefix`).
 - Text is pulled from `full-text-search.db`; if absent, PDFs are attempted when `pypdf` is available.
 - Outputs: Markdown logs in `logs/` (`risks.md`, `issues.md`, `tasks.md`, `development.md` for grows/glows, `development_runs.md` for run history).
+- After each non-dry run, PDFs are rendered alongside each log (`*.pdf`), overwriting prior PDFs for those files. Requires `pandoc` + a PDF engine (e.g., `pdflatex`) installed.
 
 ## Smoke Test
 - Dry-run the processor for a narrow window (defaults to yesterday):  

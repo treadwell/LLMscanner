@@ -9,6 +9,7 @@ import json
 import os
 import re
 import sqlite3
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -444,6 +445,21 @@ def write_log(path: Path, headers: Sequence[str], rows: Sequence[Dict[str, str]]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def render_pdf_from_markdown(md_path: Path) -> None:
+    if not md_path.exists():
+        return
+    pdf_path = md_path.with_suffix(".pdf")
+    cmd = ["pandoc", str(md_path), "-o", str(pdf_path), "--pdf-engine=pdflatex"]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        print(f"Wrote PDF: {pdf_path}")
+    except FileNotFoundError:
+        print("Skipping PDF generation: pandoc not available.")
+    except subprocess.CalledProcessError as exc:  # pragma: no cover - external tool
+        stderr = exc.stderr.strip() if exc.stderr else str(exc)
+        print(f"PDF generation failed for {md_path.name}: {stderr}")
+
+
 def sort_by_person(rows: Sequence[Dict[str, str]], person_field: str = "Person", date_field: str = "Date") -> List[Dict[str, str]]:
     def parse_date(value: str) -> dt.date:
         try:
@@ -649,13 +665,15 @@ def process(args: argparse.Namespace) -> None:
             f"[dry-run] Would write {len(risk_rows)} risks, {len(issue_rows)} issues, "
             f"{len(task_rows)} tasks, {len(grows_rows)} grows, {len(glows_rows)} glows."
         )
+        update_development_log(log_dir / "development_runs.md", meetings, args.dry_run)
     else:
         write_log(log_dir / "risks.md", risk_headers, risk_rows)
         write_log(log_dir / "issues.md", issue_headers, issue_rows)
         write_log(log_dir / "tasks.md", task_headers, task_rows)
         write_development_tables(log_dir / "development.md", grows_headers, grows_rows, glows_headers, glows_rows)
-
-    update_development_log(log_dir / "development_runs.md", meetings, args.dry_run)
+        update_development_log(log_dir / "development_runs.md", meetings, args.dry_run)
+        for md_name in ("risks.md", "issues.md", "tasks.md", "development.md", "development_runs.md"):
+            render_pdf_from_markdown(log_dir / md_name)
     print(
         f"Processed {len(meetings)} meeting(s): {len(risks)} risks, "
         f"{len(issues)} issues, {len(tasks)} tasks, {len(grows)} grows, {len(glows)} glows."

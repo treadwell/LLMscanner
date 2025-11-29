@@ -89,3 +89,5 @@
 | R-0087 | 2025-11-26 | Ken Ja' von | Unassigned | substantial risk to sample readiness and | open | 1 |
 | R-0088 | 2025-11-24 | Finance & Supply Chain Office Hour w. Catherine & Larry | Larry Berger | Potential delays in finding a suitable candidate for CFO. | open | 1 |
 | R-0089 | 2025-11-25 | Operations & Inventory SteerCo | Steve W. | Backorder process needs to be finalized to avoid scrambling during inventory shortages. | open | 2 |
+| R-0090 | 2025-11-24 | Finance & Supply Chain Office Hour w. Catherine & Larry | Larry Berger | Potential delays in finding a suitable CFO candidate. | open | 1 |
+| R-0091 | 2025-11-25 | Operations & Inventory SteerCo | Tony K. | Potential delays in the electorum closing process due to inventory management issues. | open | 1 |
