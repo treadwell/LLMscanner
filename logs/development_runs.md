@@ -1,4 +1,4 @@
-# Development Run Log
-
 | Run Date | Meetings Processed | Notes |
-| --- | --- | --- |
+|---|---|---|
+| 2025-11-29 11:51 | Finance & Supply Chain Office Hour w. Catherine & Larry, Product Pricing Configuration Projects SteerCo, Ken Mikielle weekly touchpoints, Operations & Inventory SteerCo, Ken Danielle, Ken Shaelyn, Bi-weekly Check-in Ken w Data & Systems Leads, Ken Angela: Touchbase on Order Scheduling, Ken Brett, Pure Science Amplify, Q2C Shipping Rev Allocation Review | Processed 11 meeting(s) |
+| 2025-11-29 11:56 | Finance & Supply Chain Office Hour w. Catherine & Larry, Product Pricing Configuration Projects SteerCo, Ken Mikielle weekly touchpoints, Operations & Inventory SteerCo, Ken Danielle, Ken Shaelyn, Bi-weekly Check-in Ken w Data & Systems Leads, Ken Angela: Touchbase on Order Scheduling, Ken Brett, Pure Science Amplify, Q2C Shipping Rev Allocation Review | Processed 11 meeting(s) |

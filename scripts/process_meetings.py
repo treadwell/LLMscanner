@@ -14,8 +14,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
-CALIBRE_ROOT_DEFAULT = Path("/Users/kbrooks/Dropbox/Books/calibreGPT_test_lg")
-MEETING_TAG_PREFIXES_DEFAULT = ("Meetings.", "Meeting.")
+try:
+    from dotenv import load_dotenv  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    load_dotenv = None
+
+CALIBRE_ROOT_DEFAULT = Path(os.getenv("CALIBRE_ROOT", "/Users/kbrooks/Dropbox/Books/calibreGPT_test_lg"))
+MEETING_TAG_PREFIXES_DEFAULT = ("Meetings",)
 DATE_FMT = "%Y-%m-%d"
 
 
@@ -47,7 +52,7 @@ def parse_args() -> argparse.Namespace:
         "--calibre-root",
         type=Path,
         default=CALIBRE_ROOT_DEFAULT,
-        help="Calibre library root containing metadata.db and full-text-search.db.",
+        help="Calibre library root containing metadata.db and full-text-search.db (defaults to CALIBRE_ROOT env var or the built-in path).",
     )
     parser.add_argument(
         "--start",
@@ -272,6 +277,18 @@ def llm_extract_items_openai(
         max_tokens=800,
     )
     content = response.choices[0].message.content or "[]"
+
+    def strip_code_fences(raw: str) -> str:
+        fenced = raw.strip()
+        if fenced.startswith("```") and fenced.endswith("```"):
+            fenced = fenced.strip("`")
+            # Drop optional language hint like ```json
+            parts = fenced.split("\n", 1)
+            if len(parts) == 2:
+                return parts[1]
+        return raw
+
+    content = strip_code_fences(content)
     try:
         data = json.loads(content)
     except json.JSONDecodeError as exc:
@@ -427,6 +444,23 @@ def write_log(path: Path, headers: Sequence[str], rows: Sequence[Dict[str, str]]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def sort_by_person(rows: Sequence[Dict[str, str]], person_field: str = "Person", date_field: str = "Date") -> List[Dict[str, str]]:
+    def parse_date(value: str) -> dt.date:
+        try:
+            return dt.datetime.strptime(value, DATE_FMT).date()
+        except Exception:
+            return dt.date.min
+
+    return sorted(
+        rows,
+        key=lambda r: (
+            normalize_text(r.get(person_field, "")),
+            -parse_date(r.get(date_field, "")).toordinal(),
+            r.get("ID", ""),
+        ),
+    )
+
+
 def load_development_tables(path: Path) -> Tuple[List[str], List[Dict[str, str]], List[str], List[Dict[str, str]]]:
     if not path.exists():
         return [], [], [], []
@@ -498,6 +532,8 @@ def update_development_log(path: Path, meetings: List[Meeting], dry_run: bool) -
 
 
 def process(args: argparse.Namespace) -> None:
+    if load_dotenv:
+        load_dotenv(Path(__file__).resolve().parent.parent / ".env")
     calibre_root = args.calibre_root
     metadata_db = calibre_root / "metadata.db"
     fts_db = calibre_root / "full-text-search.db"
@@ -516,7 +552,8 @@ def process(args: argparse.Namespace) -> None:
         author_filter=args.author,
     )
     if not meetings:
-        print(f"No meetings tagged {MEETING_TAG_PREFIX} between {start_date} and {end_date}.")
+        prefix_label = ", ".join(tag_prefixes)
+        print(f"No meetings tagged with prefixes ({prefix_label}) between {start_date} and {end_date}.")
         update_development_log(log_dir / "development.md", [], args.dry_run)
         return
 
@@ -603,6 +640,9 @@ def process(args: argparse.Namespace) -> None:
         desc_field="Note",
         meeting_field="Meeting",
     )
+
+    grows_rows = sort_by_person(grows_rows, person_field="Person", date_field="Date")
+    glows_rows = sort_by_person(glows_rows, person_field="Person", date_field="Date")
 
     if args.dry_run:
         print(

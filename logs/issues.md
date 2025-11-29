@@ -12,7 +12,6 @@
 | I-0010 | 2025-11-25 | Product Pricing Configuration Projects SteerCo | Unassigned | - Diane experienced connectivity issues that limited some of her real-time | open | 1 |
 | I-0011 | 2025-11-25 | Product Pricing Configuration Projects SteerCo | Unassigned | behavioral shortfall noted beyond technical problems. | open | 1 |
 | I-0012 | 2025-11-25 | Product Pricing Configuration Projects SteerCo | Unassigned | a complex issue. | open | 1 |
-| I-0013 | 2025-11-25 | Product Pricing Configuration Projects SteerCo | Unassigned | by encouraging better tracking and linking of issues in JIRA tickets | | open | 1 |
 | I-0014 | 2025-11-25 | Product Pricing Configuration Projects SteerCo | Unassigned | struggling with issues such as product decision impacts. | open | 1 |
 | I-0015 | 2025-11-25 | Product Pricing Configuration Projects SteerCo | Unassigned | 05:34 Nicole R.: Tech issues- will try to log in again | open | 1 |
 | I-0016 | 2025-11-25 | Product Pricing Configuration Projects SteerCo | Unassigned | or is it an error? | open | 1 |
@@ -179,3 +178,6 @@
 | I-0177 | 2025-11-26 | Ken Ja' von | Unassigned | so I think we've addressed the same, the issues on the Avon side. | open | 1 |
 | I-0178 | 2025-11-26 | Ken Ja' von | Unassigned | we told Steven Team that like, this was a, this could be an issue going into this | open | 1 |
 | I-0179 | 2025-11-26 | Ken Ja' von | Unassigned | we do need to work through those kinds of issues. | open | 1 |
+| I-0180 | 2025-11-24 | Finance & Supply Chain Office Hour w. Catherine & Larry | Unassigned | Current financial targets for 2025 are not being met. | open | 1 |
+| I-0181 | 2025-11-24 | Finance & Supply Chain Office Hour w. Catherine & Larry | Catherine Mackay | Address concerns regarding the company's financial targets for 2025. | open | 1 |
+| I-0182 | 2025-11-25 | Ken Brett | Unassigned | Concerns about the business systems team taking control of front-end configurations, leading to uncertainty. | open | 1 |

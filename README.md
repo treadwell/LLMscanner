@@ -5,15 +5,23 @@ Utilities for extracting actionable items from meeting transcripts stored in a C
 ## Quick Start
 - Ensure Python 3.11+ is installed.
 - Optional: create and activate a virtual environment (`python3 -m venv .venv && source .venv/bin/activate`).
+- Optional: install `python-dotenv` to auto-load `.env` (`pip install python-dotenv`), or export env vars manually.
 - Run the meeting processor (defaults to the last 7 days):  
   `python3 scripts/process_meetings.py`
 
 ## Meeting Processing
-- Source: Calibre library at `/Users/kbrooks/Dropbox/Books/calibreGPT_test_lg`.
+- Source: Calibre library at `/Users/kbrooks/Dropbox/Books/calibreGPT_test_lg` (override with `CALIBRE_ROOT` env var or in `.env`).
 - Meetings are tagged `Meetings.YYYY-MM-DD` in `metadata.db`.
 - Filters: by default, only books authored by `Tactiq` and tags starting with `Meetings.` or `Meeting.` are processed (override with `--author` and `--tag-prefix`).
 - Text is pulled from `full-text-search.db`; if absent, PDFs are attempted when `pypdf` is available.
 - Outputs: Markdown logs in `logs/` (`risks.md`, `issues.md`, `tasks.md`, `development.md` for grows/glows, `development_runs.md` for run history).
+
+## Smoke Test
+- Dry-run the processor for a narrow window (defaults to yesterday):  
+  `python3 scripts/smoke_test.py`
+- Include OpenAI extraction and an API ping to validate the key/connectivity:  
+  `python3 scripts/smoke_test.py --llm openai --ping-openai --start 2025-11-24 --end 2025-11-25`
+- `--write-logs` persists output; otherwise the smoke test leaves logs untouched.
 
 ## Customize Date Range
 - Include start/end dates:  
