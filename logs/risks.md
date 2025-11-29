@@ -91,3 +91,6 @@
 | R-0089 | 2025-11-25 | Operations & Inventory SteerCo | Steve W. | Backorder process needs to be finalized to avoid scrambling during inventory shortages. | open | 2 |
 | R-0090 | 2025-11-24 | Finance & Supply Chain Office Hour w. Catherine & Larry | Larry Berger | Potential delays in finding a suitable CFO candidate. | open | 1 |
 | R-0091 | 2025-11-25 | Operations & Inventory SteerCo | Tony K. | Potential delays in the electorum closing process due to inventory management issues. | open | 1 |
+| R-0092 | 2025-11-24 | Finance & Supply Chain Office Hour w. Catherine & Larry | Unassigned | Potential impact of Paul's departure on team morale and financial strategy. | open | 1 |
+| R-0093 | 2025-11-25 | Operations & Inventory SteerCo | Tony Koumas | Potential delays in the electorum closing process could impact inventory management. | open | 1 |
+| R-0094 | 2025-11-25 | Operations & Inventory SteerCo | Shaelyn Bagley | Inventory visibility issues during the move to the new facility could disrupt operations. | open | 1 |

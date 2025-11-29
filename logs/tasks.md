@@ -99,12 +99,12 @@
 | T-0097 | Tony K. | Review and comment on the future roadmap notes shared by Victoria. | Operations & Inventory SteerCo (Meetings.2025-11-25) |  | open | 1 |
 | T-0098 | Unassigned | Finalize the backorder process agreement with inbound and outbound operations. | Operations & Inventory SteerCo (Meetings.2025-11-25) | 2025-12-02 | open | 2 |
 | T-0099 | Unassigned | Discuss and approve the inventory move plan for the new facility. | Operations & Inventory SteerCo (Meetings.2025-11-25) | 2025-12-01 | open | 1 |
-| T-0100 | Danielle Monaco | Danielle to create dashboards and consistently market her achievements. | Ken Danielle (Meetings.2025-11-25) |  | open | 2 |
+| T-0100 | Danielle Monaco | Danielle to create dashboards and consistently market her achievements. | Ken Danielle (Meetings.2025-11-25) |  | open | 3 |
 | T-0101 | Ken Brooks | Ken to set stretch goals collaboratively with Danielle. | Ken Danielle (Meetings.2025-11-25) |  | open | 1 |
 | T-0102 | Danielle Monaco | Danielle to surface dissenting views and seek clarity on organizational decisions. | Ken Danielle (Meetings.2025-11-25) |  | open | 1 |
 | T-0103 | Shaelyn Bagley | Shaelyn needs to send an email to Sam regarding the in-band adjustment. | Ken Shaelyn (Meetings.2025-11-25) |  | open | 1 |
 | T-0104 | Ken Brooks | Ken and Shaelyn need to finalize budget adjustments based on November actuals. | Ken Shaelyn (Meetings.2025-11-25) |  | open | 2 |
-| T-0105 | Unassigned | Add security assessment for third-party vendors to the to-do list. | Bi-weekly Check-in Ken w Data & Systems Leads (Meetings.2025-11-25) |  | open | 3 |
+| T-0105 | Unassigned | Add security assessment for third-party vendors to the to-do list. | Bi-weekly Check-in Ken w Data & Systems Leads (Meetings.2025-11-25) |  | open | 4 |
 | T-0106 | Unassigned | Collect security information from vendors regarding incident management and disaster recovery. | Bi-weekly Check-in Ken w Data & Systems Leads (Meetings.2025-11-25) |  | open | 2 |
 | T-0107 | Unassigned | Ensure pricing validation is included in the template plan. | Bi-weekly Check-in Ken w Data & Systems Leads (Meetings.2025-11-25) |  | open | 3 |
 | T-0108 | Ken Brooks | Ken to interview candidate Rafael Vargas to assess fit more thoroughly. | Ken Angela: Touchbase on Order Scheduling (Meetings.2025-11-25) | 2025-11-28 | open | 1 |
@@ -115,15 +115,15 @@
 | T-0113 | Catherine Mackay | Gather input on desired qualities and experiences for the new CFO from team members. | Finance & Supply Chain Office Hour w. Catherine & Larry (Meetings.2025-11-24) | 2025-12-01 | open | 1 |
 | T-0114 | Andrea Bennett | Andrea will complete the deal desk deliverables. | Product Pricing Configuration Projects SteerCo (Meetings.2025-11-25) |  | open | 1 |
 | T-0115 | Ken Brooks | Ken to propose automation of weekly data quality checks to prevent revenue recognition errors. | Ken Mikielle weekly touchpoints (Meetings.2025-11-25) |  | open | 1 |
-| T-0116 | Mikielle Barkley | Mikielle and Brandy to conduct a deep dive investigation on order backlogs and supply chain issues. | Ken Mikielle weekly touchpoints (Meetings.2025-11-25) | Before next meeting | open | 1 |
+| T-0116 | Mikielle Barkley | Mikielle and Brandy to conduct a deep dive investigation on order backlogs and supply chain issues. | Ken Mikielle weekly touchpoints (Meetings.2025-11-25) | Before next meeting | open | 2 |
 | T-0117 | Mikielle Barkley | Mikielle and Brandy to prepare a write-up of their findings regarding order aging and supply. | Ken Mikielle weekly touchpoints (Meetings.2025-11-25) | Before next meeting | open | 1 |
 | T-0118 | Tony K. | Review and comment on Victoria's notes regarding future roadmap. | Operations & Inventory SteerCo (Meetings.2025-11-25) |  | open | 1 |
 | T-0119 | Steve W. | Discuss the BR move plan with finance and auditing compliance. | Operations & Inventory SteerCo (Meetings.2025-11-25) |  | open | 1 |
 | T-0120 | Danielle Monaco | Danielle needs to create dashboards and consistently market her achievements. | Ken Danielle (Meetings.2025-11-25) |  | open | 1 |
 | T-0121 | Ken Brooks | Ken should set stretch goals collaboratively with Danielle to enhance motivation. | Ken Danielle (Meetings.2025-11-25) |  | open | 1 |
-| T-0122 | Shaelyn Bagley | Shaelyn needs to send an email to Sam regarding in-band adjustments. | Ken Shaelyn (Meetings.2025-11-25) |  | open | 2 |
-| T-0123 | Ken Brooks | Ken to interview Rafael Vargas to assess fit for the role. | Ken Angela: Touchbase on Order Scheduling (Meetings.2025-11-25) | 2025-11-28 | open | 2 |
-| T-0124 | Angela Waller | Angela to discuss candidate interview process with Shaylin. | Ken Angela: Touchbase on Order Scheduling (Meetings.2025-11-25) | 2025-11-26 | open | 1 |
+| T-0122 | Shaelyn Bagley | Shaelyn needs to send an email to Sam regarding in-band adjustments. | Ken Shaelyn (Meetings.2025-11-25) |  | open | 3 |
+| T-0123 | Ken Brooks | Ken to interview Rafael Vargas to assess fit for the role. | Ken Angela: Touchbase on Order Scheduling (Meetings.2025-11-25) | 2025-11-28 | open | 3 |
+| T-0124 | Angela Waller | Angela to discuss candidate interview process with Shaylin. | Ken Angela: Touchbase on Order Scheduling (Meetings.2025-11-25) | 2025-11-26 | open | 2 |
 | T-0125 | Unassigned | Investigate the feasibility of validating bills of materials against a rule set for proof of concept. | Pure Science Amplify (Meetings.2025-11-25) |  | open | 1 |
 | T-0126 | Cindy Li | Develop a holiday event plan for December. | Finance & Supply Chain Office Hour w. Catherine & Larry (Meetings.2025-11-24) | 2025-12-01 | open | 1 |
 | T-0127 | Larry Berger | Draft job description for the new CFO. | Finance & Supply Chain Office Hour w. Catherine & Larry (Meetings.2025-11-24) | 2025-12-01 | open | 1 |
@@ -137,4 +137,19 @@
 | T-0135 | Danielle Monaco | Danielle to surface dissenting views and seek clearer alignment on decisions. | Ken Danielle (Meetings.2025-11-25) |  | open | 1 |
 | T-0136 | Angela Waller | Angela to discuss candidate interview process with Shaylin and propose changes. | Ken Angela: Touchbase on Order Scheduling (Meetings.2025-11-25) | 2025-11-26 | open | 1 |
 | T-0137 | Unassigned | Explore automation ideas for updating purchase orders from email to reduce manual data handling. | Pure Science Amplify (Meetings.2025-11-25) |  | open | 1 |
-| T-0138 | Unassigned | Investigate the feasibility of validating materials against a rule set for proof of concept. | Pure Science Amplify (Meetings.2025-11-25) |  | open | 1 |
+| T-0138 | Unassigned | Investigate the feasibility of validating materials against a rule set for proof of concept. | Pure Science Amplify (Meetings.2025-11-25) |  | open | 2 |
+| T-0139 | Cindy Li | Develop a favorite song for the Finance & Supply Chain group. | Finance & Supply Chain Office Hour w. Catherine & Larry (Meetings.2025-11-24) | 2025-12-01 | open | 1 |
+| T-0140 | Catherine Mackay | Gather input from team members on desired qualities for the new CFO. | Finance & Supply Chain Office Hour w. Catherine & Larry (Meetings.2025-11-24) | 2025-12-15 | open | 1 |
+| T-0141 | Larry Berger | Initiate the search for a new CFO after Thanksgiving. | Finance & Supply Chain Office Hour w. Catherine & Larry (Meetings.2025-11-24) | 2025-11-30 | open | 1 |
+| T-0142 | Ken Brooks | Ken to propose automating weekly data quality checks to prevent revenue recognition errors. | Ken Mikielle weekly touchpoints (Meetings.2025-11-25) |  | open | 1 |
+| T-0143 | Mikielle Barkley | Mikielle and Brandy to prepare a write-up of their findings on order aging and supply issues. | Ken Mikielle weekly touchpoints (Meetings.2025-11-25) | Before next meeting | open | 1 |
+| T-0144 | Steve Wenz | Finalize backorder process agreement with inbound and outbound operations. | Operations & Inventory SteerCo (Meetings.2025-11-25) | 2025-12-01 | open | 1 |
+| T-0145 | Tony Koumas, Steve Wenz, Ken Brooks | Review and comment on project scores and notes shared by Victoria. | Operations & Inventory SteerCo (Meetings.2025-11-25) | 2025-12-01 | open | 1 |
+| T-0146 | Tony Koumas | Coordinate with Joe Romano and Stephanie on the project once they return. | Operations & Inventory SteerCo (Meetings.2025-11-25) | 2025-12-01 | open | 1 |
+| T-0147 | Steve Wenz | Discuss and establish a process for creating TORs post-move. | Operations & Inventory SteerCo (Meetings.2025-11-25) | 2025-12-05 | open | 1 |
+| T-0148 | Ken Brooks | Ken to provide clearer alignment on expectations and collaborative goal-setting with Danielle. | Ken Danielle (Meetings.2025-11-25) |  | open | 1 |
+| T-0149 | Unassigned | Collect information on vendors' security practices and certifications. | Bi-weekly Check-in Ken w Data & Systems Leads (Meetings.2025-11-25) |  | open | 1 |
+| T-0150 | Rick McMorrow | Ensure pricing validation is included in the template plan. | Bi-weekly Check-in Ken w Data & Systems Leads (Meetings.2025-11-25) |  | open | 1 |
+| T-0151 | Rick McMorrow | Reconcile efforts between template improvement and app development. | Bi-weekly Check-in Ken w Data & Systems Leads (Meetings.2025-11-25) |  | open | 1 |
+| T-0152 | Ken Brooks | Ken to introduce Rick to the contact at Strive for assistance. | Bi-weekly Check-in Ken w Data & Systems Leads (Meetings.2025-11-25) |  | open | 1 |
+| T-0153 | Unassigned | Explore automation ideas for updating purchase orders from email to tracking sheets. | Pure Science Amplify (Meetings.2025-11-25) |  | open | 1 |

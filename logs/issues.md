@@ -178,6 +178,6 @@
 | I-0177 | 2025-11-26 | Ken Ja' von | Unassigned | so I think we've addressed the same, the issues on the Avon side. | open | 1 |
 | I-0178 | 2025-11-26 | Ken Ja' von | Unassigned | we told Steven Team that like, this was a, this could be an issue going into this | open | 1 |
 | I-0179 | 2025-11-26 | Ken Ja' von | Unassigned | we do need to work through those kinds of issues. | open | 1 |
-| I-0180 | 2025-11-24 | Finance & Supply Chain Office Hour w. Catherine & Larry | Unassigned | Current financial targets for 2025 are not being met. | open | 2 |
+| I-0180 | 2025-11-24 | Finance & Supply Chain Office Hour w. Catherine & Larry | Unassigned | Current financial targets for 2025 are not being met. | open | 3 |
 | I-0181 | 2025-11-24 | Finance & Supply Chain Office Hour w. Catherine & Larry | Catherine Mackay | Address concerns regarding the company's financial targets for 2025. | open | 1 |
 | I-0182 | 2025-11-25 | Ken Brett | Unassigned | Concerns about the business systems team taking control of front-end configurations, leading to uncertainty. | open | 1 |

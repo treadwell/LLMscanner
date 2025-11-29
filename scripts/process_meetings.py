@@ -11,6 +11,7 @@ import re
 import sqlite3
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
@@ -445,11 +446,28 @@ def write_log(path: Path, headers: Sequence[str], rows: Sequence[Dict[str, str]]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def render_pdf_from_markdown(md_path: Path) -> None:
-    if not md_path.exists():
+def render_pdf_from_markdown(
+    md_path: Path,
+    *,
+    output_path: Optional[Path] = None,
+    extra_args: Optional[Sequence[str]] = None,
+    content: Optional[str] = None,
+) -> None:
+    if content is None and not md_path.exists():
         return
-    pdf_path = md_path.with_suffix(".pdf")
-    cmd = ["pandoc", str(md_path), "-o", str(pdf_path), "--pdf-engine=pdflatex"]
+    pdf_path = output_path or md_path.with_suffix(".pdf")
+    input_path = md_path
+    temp_file: Optional[tempfile.NamedTemporaryFile] = None
+
+    if content is not None:
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".md")
+        temp_file.write(content.encode("utf-8"))
+        temp_file.flush()
+        input_path = Path(temp_file.name)
+
+    cmd = ["pandoc", str(input_path), "-o", str(pdf_path), "--pdf-engine=pdflatex"]
+    if extra_args:
+        cmd.extend(extra_args)
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True)
         print(f"Wrote PDF: {pdf_path}")
@@ -457,7 +475,13 @@ def render_pdf_from_markdown(md_path: Path) -> None:
         print("Skipping PDF generation: pandoc not available.")
     except subprocess.CalledProcessError as exc:  # pragma: no cover - external tool
         stderr = exc.stderr.strip() if exc.stderr else str(exc)
-        print(f"PDF generation failed for {md_path.name}: {stderr}")
+        print(f"PDF generation failed for {pdf_path.name}: {stderr}")
+    finally:
+        if temp_file:
+            try:
+                Path(temp_file.name).unlink()
+            except Exception:
+                pass
 
 
 def sort_by_person(rows: Sequence[Dict[str, str]], person_field: str = "Person", date_field: str = "Date") -> List[Dict[str, str]]:
@@ -475,6 +499,45 @@ def sort_by_person(rows: Sequence[Dict[str, str]], person_field: str = "Person",
             r.get("ID", ""),
         ),
     )
+
+
+def build_development_person_pages(
+    grows_headers: Sequence[str],
+    grows_rows: Sequence[Dict[str, str]],
+    glows_headers: Sequence[str],
+    glows_rows: Sequence[Dict[str, str]],
+) -> str:
+    # Gather unique people
+    people = sorted(
+        {normalize_text(row.get("Person", "")) for row in grows_rows + glows_rows if row.get("Person")}
+    )
+    header = "# Development by Person\n"
+    pages: List[str] = [header]
+
+    def build_table(headers: Sequence[str], rows: Sequence[Dict[str, str]]) -> List[str]:
+        if not rows:
+            return ["_None_"]
+        lines = ["| " + " | ".join(headers) + " |", "|" + "|".join(["---"] * len(headers)) + "|"]
+        for row in rows:
+            lines.append("| " + " | ".join(row.get(h, "") for h in headers) + " |")
+        return lines
+
+    for idx, person_norm in enumerate(people):
+        person_label = next(
+            (row.get("Person") for row in grows_rows + glows_rows if normalize_text(row.get("Person", "")) == person_norm),
+            person_norm,
+        )
+        pages.append(f"## {person_label}")
+        person_grows = [row for row in grows_rows if normalize_text(row.get("Person", "")) == person_norm]
+        person_glows = [row for row in glows_rows if normalize_text(row.get("Person", "")) == person_norm]
+
+        pages.append("### Grows")
+        pages.extend(build_table(grows_headers, person_grows))
+        pages.append("\n### Glows")
+        pages.extend(build_table(glows_headers, person_glows))
+        if idx < len(people) - 1:
+            pages.append("\n\\newpage\n")
+    return "\n".join(pages)
 
 
 def load_development_tables(path: Path) -> Tuple[List[str], List[Dict[str, str]], List[str], List[Dict[str, str]]]:
@@ -672,8 +735,18 @@ def process(args: argparse.Namespace) -> None:
         write_log(log_dir / "tasks.md", task_headers, task_rows)
         write_development_tables(log_dir / "development.md", grows_headers, grows_rows, glows_headers, glows_rows)
         update_development_log(log_dir / "development_runs.md", meetings, args.dry_run)
-        for md_name in ("risks.md", "issues.md", "tasks.md", "development.md", "development_runs.md"):
-            render_pdf_from_markdown(log_dir / md_name)
+
+        pdf_args = ["-V", "geometry=landscape"]
+        for md_name in ("risks.md", "issues.md", "tasks.md", "development_runs.md"):
+            render_pdf_from_markdown(log_dir / md_name, extra_args=pdf_args)
+
+        # Development PDF: one page per person in landscape
+        dev_person_pages = build_development_person_pages(grows_headers, grows_rows, glows_headers, glows_rows)
+        render_pdf_from_markdown(
+            log_dir / "development.md",
+            extra_args=pdf_args,
+            content=dev_person_pages,
+        )
     print(
         f"Processed {len(meetings)} meeting(s): {len(risks)} risks, "
         f"{len(issues)} issues, {len(tasks)} tasks, {len(grows)} grows, {len(glows)} glows."
