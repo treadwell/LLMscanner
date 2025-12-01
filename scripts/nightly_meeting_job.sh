@@ -3,7 +3,7 @@
 set -euo pipefail
 
 PROJECT_ROOT="/Users/kbrooks/Dropbox/Projects/LLMscanner"
-CALIBRE_ROOT="/Users/kbrooks/Dropbox/Books/calibreGPT_test_lg"
+CALIBRE_ROOT="/Users/kbrooks/Dropbox/Books/Calibre Travel Library"
 PYTHON_BIN="${PYTHON_BIN:-/Library/Frameworks/Python.framework/Versions/3.11/bin/python3}"
 LOG_DIR="$PROJECT_ROOT/logs"
 TIMESTAMP="$(date '+%Y-%m-%d %H:%M:%S')"

@@ -10,7 +10,7 @@ Utilities for extracting actionable items from meeting transcripts stored in a C
   `python3 scripts/process_meetings.py`
 
 ## Meeting Processing
-- Source: Calibre library at `/Users/kbrooks/Dropbox/Books/calibreGPT_test_lg` (override with `CALIBRE_ROOT` env var or in `.env`).
+- Source: Calibre library at `/Users/kbrooks/Dropbox/Books/Calibre Travel Library` (override with `CALIBRE_ROOT` env var or in `.env`).
 - Meetings are tagged `Meetings.YYYY-MM-DD` in `metadata.db`.
 - Filters: by default, only books authored by `Tactiq` and tags starting with `Meetings.` or `Meeting.` are processed (override with `--author` and `--tag-prefix`).
 - Text is pulled from `full-text-search.db`; if absent, PDFs are attempted when `pypdf` is available.

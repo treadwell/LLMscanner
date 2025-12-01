@@ -21,7 +21,9 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     load_dotenv = None
 
-CALIBRE_ROOT_DEFAULT = Path(os.getenv("CALIBRE_ROOT", "/Users/kbrooks/Dropbox/Books/calibreGPT_test_lg"))
+CALIBRE_ROOT_DEFAULT = Path(
+    os.getenv("CALIBRE_ROOT", "/Users/kbrooks/Dropbox/Books/Calibre Travel Library")
+)
 MEETING_TAG_PREFIXES_DEFAULT = ("Meetings",)
 DATE_FMT = "%Y-%m-%d"
 
