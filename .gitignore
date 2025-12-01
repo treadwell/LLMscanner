@@ -16,3 +16,8 @@ dist/
 
 # Local env/config
 .env
+
+# Generated logs
+logs/*.md
+logs/*.pdf
+logs/cron.log
