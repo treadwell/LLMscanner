@@ -36,7 +36,7 @@ Utilities for extracting actionable items from meeting transcripts stored in a C
 - Enable LLM extraction (improves signal from noisy transcripts):
   ```
   OPENAI_API_KEY=sk-... \
-  python3 scripts/process_meetings.py --llm openai --llm-model gpt-4o-mini
+  python3 scripts/process_meetings.py --llm openai --llm-model gpt-5.1
   ```
 - The script defaults to keyword heuristics when `--llm` is `none`. LLM mode truncates transcripts to `--llm-max-chars` (default 12,000) to control tokens.
 - Extracted types: risks, issues, tasks, and people development items: `grows` (coaching/development) and `glows` (praise). Grows/Glows live in `logs/development.md`; a run log lives in `logs/development_runs.md`.

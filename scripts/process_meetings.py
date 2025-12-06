@@ -12,6 +12,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+from html import unescape
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
@@ -96,18 +97,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--llm",
         choices=["none", "openai"],
-        default="none",
+        default="openai",
         help="Use an LLM for extraction instead of keyword heuristics.",
     )
     parser.add_argument(
         "--llm-model",
-        default="gpt-4o-mini",
+        default="gpt-5.1",
         help="LLM model name (when --llm=openai).",
     )
     parser.add_argument(
         "--llm-max-chars",
         type=int,
-        default=12000,
+        default=20000,
         help="Max characters from the transcript to send to the LLM (to control token costs).",
     )
     return parser.parse_args()
@@ -224,30 +225,6 @@ def extract_from_pdf(pdf_path: Path) -> Optional[str]:
         return None
 
 
-def capture_owner(text: str) -> str:
-    owner_patterns = [
-        r"(?:owner|assignee|lead)[:\-]\s*([A-Z][A-Za-z]+\s*[A-Za-z]*)",
-        r"^([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s*:\s",
-        r"@([A-Z][A-Za-z]+)",
-    ]
-    for pat in owner_patterns:
-        match = re.search(pat, text, flags=re.IGNORECASE)
-        if match:
-            return match.group(1).strip()
-    return "Unassigned"
-
-
-def split_sentences(text: str) -> List[str]:
-    lines = []
-    for block in text.splitlines():
-        block = block.strip()
-        if not block:
-            continue
-        lines.extend(re.split(r"(?<=[.!?])\s+|\s*[\r\n]+", block))
-    sentences = [ln.strip() for ln in lines if len(ln.strip()) > 12]
-    return sentences
-
-
 def llm_extract_items_openai(
     text: str, meeting: Meeting, model: str, max_chars: int
 ) -> List[Item]:
@@ -263,10 +240,13 @@ def llm_extract_items_openai(
     trimmed_text = text[:max_chars]
     system_prompt = (
         "Extract actionable items from the provided meeting transcript. "
+        "The transcript may be structured with 'AI: Behaviors' sections listing a name, then 'Glow:' entries (with distinctions such as 'We are students seeking insight', 'We are teachers eliciting brilliance', 'We are a community united', 'We are a leading education company'), followed by examples; then 'Grow' sections with the same distinctions. "
         "Return JSON ONLY: an array of objects with fields: "
-        "`type` (risk|issue|task|grow|glow), `summary`, `owner` (person or 'Unassigned'), "
+        "`type` (risk|issue|task|grow|glow), `summary`, `owner` (person), "
         "`due` (optional date or empty string). "
         "Treat 'grow' as a development opportunity and 'glow' as positive feedback. "
+        "Always set `owner` to the person whose section the glow/grow is in; copy the name verbatim (preserve apostrophes/dashes). "
+        "Only use 'Unassigned' if no person is mentioned anywhere. "
         "Keep summaries concise and concrete."
     )
     user_prompt = f"Meeting: {meeting.title} ({meeting.meeting_date})\nTranscript:\n{trimmed_text}"
@@ -324,40 +304,6 @@ def llm_extract_items_openai(
     return items
 
 
-def classify_sentences(sentences: Iterable[str], meeting: Meeting) -> List[Item]:
-    task_kw = ("action", "follow up", "follow-up", "todo", "task", "next step", "next steps", "takeaway")
-    risk_kw = ("risk", "concern", "blocker", "dependency", "exposure", "mitigation")
-    issue_kw = ("issue", "problem", "bug", "error", "failing", "outage")
-    dev_kw = ("coaching", "training", "mentorship", "feedback", "growth", "improve", "develop")
-    glow_kw = ("kudos", "great job", "well done", "excellent", "strong", "praise", "impressive")
-    items: List[Item] = []
-    seen: set[Tuple[str, str]] = set()
-
-    for sentence in sentences:
-        s_norm = normalize_text(sentence)
-        label = None
-        if any(k in s_norm for k in risk_kw):
-            label = "risk"
-        elif any(k in s_norm for k in issue_kw):
-            label = "issue"
-        elif any(k in s_norm for k in task_kw):
-            label = "task"
-        elif any(k in s_norm for k in glow_kw):
-            label = "glow"
-        elif any(k in s_norm for k in dev_kw):
-            label = "grow"
-        if not label:
-            continue
-        key = (label, s_norm)
-        if key in seen:
-            continue
-        seen.add(key)
-        owner = capture_owner(sentence)
-        summary = sentence.strip()
-        items.append(Item(kind=label, summary=summary, owner=owner, meeting=meeting))
-    return items
-
-
 def load_log_table(path: Path) -> Tuple[List[str], List[Dict[str, str]]]:
     if not path.exists():
         return [], []
@@ -365,6 +311,9 @@ def load_log_table(path: Path) -> Tuple[List[str], List[Dict[str, str]]]:
 
 
 def load_log_table_from_lines(lines: Sequence[str]) -> Tuple[List[str], List[Dict[str, str]]]:
+    text = "\n".join(lines)
+    if "<table" in text:
+        return load_html_table(text)
     headers: List[str] = []
     rows: List[Dict[str, str]] = []
     for line in lines:
@@ -382,7 +331,28 @@ def load_log_table_from_lines(lines: Sequence[str]) -> Tuple[List[str], List[Dic
     return headers, rows
 
 
-def next_id(rows: Sequence[Dict[str, str]], prefix: str) -> str:
+def load_html_table(text: str) -> Tuple[List[str], List[Dict[str, str]]]:
+    headers: List[str] = []
+    rows: List[Dict[str, str]] = []
+    row_pat = re.compile(r"<tr>(.*?)</tr>", flags=re.DOTALL | re.IGNORECASE)
+    cell_pat = re.compile(r"<t[hd]>(.*?)</t[hd]>", flags=re.DOTALL | re.IGNORECASE)
+
+    def clean(cell: str) -> str:
+        cell_no_tags = re.sub(r"<.*?>", "", cell)
+        return unescape(cell_no_tags).strip()
+
+    for idx, row_html in enumerate(row_pat.findall(text)):
+        cells = [clean(c) for c in cell_pat.findall(row_html)]
+        if not cells:
+            continue
+        if idx == 0:
+            headers = cells
+            continue
+        rows.append(dict(zip(headers, cells)))
+    return headers, rows
+
+
+def next_id(rows: Sequence[Dict[str, str]], prefix: str, *, pad: bool = True) -> str:
     highest = 0
     for row in rows:
         ident = row.get("ID", "")
@@ -392,7 +362,158 @@ def next_id(rows: Sequence[Dict[str, str]], prefix: str) -> str:
                 highest = max(highest, val)
             except ValueError:
                 continue
-    return f"{prefix}-{highest + 1:04d}"
+    number = highest + 1
+    return f"{prefix}-{number:04d}" if pad else f"{prefix}-{number}"
+
+
+def normalize_development_table(
+    headers: Sequence[str],
+    rows: Sequence[Dict[str, str]],
+    *,
+    desc_field: str,
+    meeting_field: str = "Meeting",
+    date_field: str = "Date",
+    prefix: str,
+) -> Tuple[List[str], List[Dict[str, str]]]:
+    """Transform legacy development tables to the simplified schema."""
+    target_headers = ["ID", "Person", desc_field]
+    normalized: List[Dict[str, str]] = []
+
+    def pad_id(ident: str) -> str:
+        if ident.startswith(f"{prefix}-"):
+            suffix = ident.split("-", 1)[1]
+            try:
+                suffix_int = int(suffix)
+                return f"{prefix}-{suffix_int:04d}"
+            except ValueError:
+                return ident
+        return ident
+
+    for row in rows:
+        summary = row.get(desc_field, "")
+        meeting = row.get(meeting_field, "")
+        date = row.get(date_field, "")
+        extra_parts = [part for part in (meeting, date) if part]
+        if extra_parts:
+            summary = f"{summary} ({', '.join(extra_parts)})"
+        normalized.append(
+            {
+                "ID": pad_id(row.get("ID", "")),
+                "Person": row.get("Person", ""),
+                desc_field: summary,
+            }
+        )
+
+    # Backfill IDs if missing (keeps any existing IDs unchanged).
+    for row in normalized:
+        if not row.get("ID"):
+            row["ID"] = next_id(normalized, prefix, pad=True)
+
+    return target_headers, normalized
+
+
+def merge_development_items(
+    rows: List[Dict[str, str]],
+    items: List[Item],
+    prefix: str,
+    desc_field: str,
+) -> List[Dict[str, str]]:
+    """Merge grow/glow items into the simplified development tables."""
+    if not rows:
+        rows = []
+    existing_index: Dict[Tuple[str, str], Dict[str, str]] = {}
+    for row in rows:
+        key = (
+            normalize_text(row.get(desc_field, "")),
+            normalize_text(row.get("Person", "")),
+        )
+        existing_index[key] = row
+
+    for item in items:
+        summary = item.summary
+        append_parts = [item.meeting.title, item.meeting.meeting_date.strftime(DATE_FMT)]
+        meeting_suffix = ", ".join(p for p in append_parts if p)
+        if meeting_suffix:
+            summary = f"{summary} ({meeting_suffix})"
+        key = (normalize_text(summary), normalize_text(item.owner))
+        if key in existing_index:
+            row = existing_index[key]
+            row["Person"] = item.owner
+            row[desc_field] = summary
+        else:
+            new_row = {
+                "ID": next_id(rows, prefix, pad=True),
+                "Person": item.owner,
+                desc_field: summary,
+            }
+            rows.append(new_row)
+            existing_index[key] = new_row
+    return rows
+
+
+
+
+def render_html_table(
+    headers: Sequence[str],
+    rows: Sequence[Dict[str, str]],
+    col_widths: Sequence[int],
+) -> str:
+    """Render an HTML table with explicit column widths."""
+    col_elems = [
+        f'<col style="width:{width}%">' for width in col_widths
+    ]
+    parts = [
+        "<table>",
+        "<colgroup>",
+        *col_elems,
+        "</colgroup>",
+        "<thead>",
+        "<tr>" + "".join(f"<th>{h}</th>" for h in headers) + "</tr>",
+        "</thead>",
+        "<tbody>",
+    ]
+    for row in rows:
+        parts.append("<tr>" + "".join(f"<td>{row.get(h, '')}</td>" for h in headers) + "</tr>")
+    parts.append("</tbody></table>")
+    return "\n".join(parts)
+
+
+def latex_escape(value: str) -> str:
+    replacements = {
+        "\\": r"\textbackslash{}",
+        "&": r"\&",
+        "%": r"\%",
+        "$": r"\$",
+        "#": r"\#",
+        "_": r"\_",
+        "{": r"\{",
+        "}": r"\}",
+        "~": r"\textasciitilde{}",
+        "^": r"\textasciicircum{}",
+    }
+    escaped = value
+    for src, repl in replacements.items():
+        escaped = escaped.replace(src, repl)
+    return escaped
+
+
+def render_latex_table(
+    headers: Sequence[str],
+    rows: Sequence[Dict[str, str]],
+    col_widths: Sequence[float],
+) -> str:
+    """Render a LaTeX tabularx with explicit column widths (fractions of linewidth)."""
+    col_spec = "".join(f"p{{{width}\\linewidth}}" for width in col_widths)
+    lines = [
+        r"\begin{tabularx}{\linewidth}{" + col_spec + "}",
+        " & ".join(r"\textbf{" + latex_escape(h) + "}" for h in headers) + r" \\",
+        r"\hline",
+    ]
+    for row in rows:
+        cells = [latex_escape(row.get(h, "")) for h in headers]
+        lines.append(" & ".join(cells) + r" \\")
+    lines.append(r"\end{tabularx}")
+    return "\n".join(lines)
 
 
 def merge_items(
@@ -519,10 +640,7 @@ def build_development_person_pages(
     def build_table(headers: Sequence[str], rows: Sequence[Dict[str, str]]) -> List[str]:
         if not rows:
             return ["_None_"]
-        lines = ["| " + " | ".join(headers) + " |", "|" + "|".join(["---"] * len(headers)) + "|"]
-        for row in rows:
-            lines.append("| " + " | ".join(row.get(h, "") for h in headers) + " |")
-        return lines
+        return [render_latex_table(headers, rows, col_widths=(0.08, 0.18, 0.74))]
 
     for idx, person_norm in enumerate(people):
         person_label = next(
@@ -557,7 +675,11 @@ def load_development_tables(path: Path) -> Tuple[List[str], List[Dict[str, str]]
         nonlocal grows_headers, glows_headers, grows_rows, glows_rows
         if not section or not buf:
             return
-        headers, rows = load_log_table_from_lines(buf)
+        text_block = "\n".join(buf)
+        if "<table" in text_block:
+            headers, rows = load_html_table(text_block)
+        else:
+            headers, rows = load_log_table_from_lines(buf)
         if section == "Grows":
             grows_headers, grows_rows = headers, rows
         elif section == "Glows":
@@ -585,16 +707,10 @@ def write_development_tables(
     sections = []
     sections.append("# Development\n")
     sections.append("## Grows")
-    sections.append("| " + " | ".join(grows_headers) + " |")
-    sections.append("|" + "|".join(["---"] * len(grows_headers)) + "|")
-    for row in grows_rows:
-        sections.append("| " + " | ".join(row.get(h, "") for h in grows_headers) + " |")
+    sections.append(render_html_table(grows_headers, grows_rows, col_widths=(10, 20, 70)))
 
     sections.append("\n## Glows")
-    sections.append("| " + " | ".join(glows_headers) + " |")
-    sections.append("|" + "|".join(["---"] * len(glows_headers)) + "|")
-    for row in glows_rows:
-        sections.append("| " + " | ".join(row.get(h, "") for h in glows_headers) + " |")
+    sections.append(render_html_table(glows_headers, glows_rows, col_widths=(10, 20, 70)))
 
     path.write_text("\n".join(sections) + "\n", encoding="utf-8")
 
@@ -648,15 +764,12 @@ def process(args: argparse.Namespace) -> None:
         if not text:
             print(f"Skipping {meeting.title}: no searchable text available.")
             continue
-        sentences = split_sentences(text)
         if args.llm == "openai":
             try:
                 items = llm_extract_items_openai(text, meeting, args.llm_model, args.llm_max_chars)
             except Exception as exc:
                 print(f"LLM extraction failed for {meeting.title}: {exc}")
                 items = []
-        else:
-            items = classify_sentences(sentences, meeting)
         if not items:
             print(f"No actionable items found in {meeting.title}.")
             continue
@@ -695,31 +808,37 @@ def process(args: argparse.Namespace) -> None:
 
     grows_headers, grows_rows, glows_headers, glows_rows = load_development_tables(log_dir / "development.md")
     if not grows_headers:
-        grows_headers = ["ID", "Person", "Area", "Meeting", "Date", "Status", "Incidents"]
+        grows_headers = ["ID", "Person", "Area"]
         grows_rows = []
+    else:
+        grows_headers, grows_rows = normalize_development_table(
+            grows_headers,
+            grows_rows,
+            desc_field="Area",
+            prefix="G",
+        )
     if not glows_headers:
-        glows_headers = ["ID", "Person", "Note", "Meeting", "Date", "Status", "Incidents"]
+        glows_headers = ["ID", "Person", "Note"]
         glows_rows = []
+    else:
+        glows_headers, glows_rows = normalize_development_table(
+            glows_headers,
+            glows_rows,
+            desc_field="Note",
+            prefix="GL",
+        )
 
-    grows_rows = merge_items(
+    grows_rows = merge_development_items(
         grows_rows,
         grows,
         "G",
-        grows_headers,
-        ("Area",),
-        owner_field="Person",
-        desc_field="Area",
-        meeting_field="Meeting",
+        "Area",
     )
-    glows_rows = merge_items(
+    glows_rows = merge_development_items(
         glows_rows,
         glows,
         "GL",
-        glows_headers,
-        ("Note",),
-        owner_field="Person",
-        desc_field="Note",
-        meeting_field="Meeting",
+        "Note",
     )
 
     grows_rows = sort_by_person(grows_rows, person_field="Person", date_field="Date")
@@ -738,7 +857,13 @@ def process(args: argparse.Namespace) -> None:
         write_development_tables(log_dir / "development.md", grows_headers, grows_rows, glows_headers, glows_rows)
         update_development_log(log_dir / "development_runs.md", meetings, args.dry_run)
 
-        pdf_args = ["-V", "geometry=landscape"]
+        pdf_args = [
+            "-V",
+            "geometry=landscape",
+            "--from=markdown+raw_tex",
+            "-V",
+            r"header-includes=\usepackage{tabularx}",
+        ]
         for md_name in ("risks.md", "issues.md", "tasks.md", "development_runs.md"):
             render_pdf_from_markdown(log_dir / md_name, extra_args=pdf_args)
 

@@ -16,17 +16,18 @@ except Exception:  # pragma: no cover - optional dependency
 
 def parse_args() -> argparse.Namespace:
     today = dt.date.today()
-    default_start = default_end = (today - dt.timedelta(days=1)).strftime("%Y-%m-%d")
+    default_start = (today - dt.timedelta(days=7)).strftime("%Y-%m-%d")
+    default_end = today.strftime("%Y-%m-%d")
     parser = argparse.ArgumentParser(description="Lightweight smoke test for meeting processing.")
-    parser.add_argument("--start", default=default_start, help="Start date (YYYY-MM-DD). Defaults to yesterday.")
-    parser.add_argument("--end", default=default_end, help="End date (YYYY-MM-DD). Defaults to yesterday.")
+    parser.add_argument("--start", default=default_start, help="Start date (YYYY-MM-DD). Defaults to 7 days ago.")
+    parser.add_argument("--end", default=default_end, help="End date (YYYY-MM-DD). Defaults to today.")
     parser.add_argument(
         "--llm",
         choices=["none", "openai"],
         default="none",
         help="Extraction mode passed through to process_meetings.",
     )
-    parser.add_argument("--llm-model", default="gpt-4o-mini", help="LLM model when using OpenAI.")
+    parser.add_argument("--llm-model", default="gpt-5.1", help="LLM model when using OpenAI.")
     parser.add_argument(
         "--ping-openai",
         action="store_true",
