@@ -27,6 +27,9 @@ CALIBRE_ROOT_DEFAULT = Path(
 )
 MEETING_TAG_PREFIXES_DEFAULT = ("Meetings",)
 DATE_FMT = "%Y-%m-%d"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+PROMPTS_DIR = REPO_ROOT / "prompts"
+LLM_SYSTEM_PROMPT_PATH = PROMPTS_DIR / "llm_extraction_system.txt"
 
 
 @dataclass
@@ -120,6 +123,14 @@ def as_date(value: str) -> dt.date:
 
 def normalize_text(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip().lower()
+
+
+def load_system_prompt() -> str:
+    """Load the LLM system prompt from disk so it can be edited without code changes."""
+    try:
+        return LLM_SYSTEM_PROMPT_PATH.read_text(encoding="utf-8").strip()
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"Missing LLM system prompt file: {LLM_SYSTEM_PROMPT_PATH}") from exc
 
 
 def load_meetings(
@@ -238,17 +249,7 @@ def llm_extract_items_openai(
         raise RuntimeError("openai package not installed") from exc
 
     trimmed_text = text[:max_chars]
-    system_prompt = (
-        "Extract actionable items from the provided meeting transcript. "
-        "The transcript may be structured with 'AI: Behaviors' sections listing a name, then 'Glow:' entries (with distinctions such as 'We are students seeking insight', 'We are teachers eliciting brilliance', 'We are a community united', 'We are a leading education company'), followed by examples; then 'Grow' sections with the same distinctions. "
-        "Return JSON ONLY: an array of objects with fields: "
-        "`type` (risk|issue|task|grow|glow), `summary`, `owner` (person), "
-        "`due` (optional date or empty string). "
-        "Treat 'grow' as a development opportunity and 'glow' as positive feedback. "
-        "Always set `owner` to the person whose section the glow/grow is in; copy the name verbatim (preserve apostrophes/dashes). "
-        "Only use 'Unassigned' if no person is mentioned anywhere. "
-        "Keep summaries concise and concrete."
-    )
+    system_prompt = load_system_prompt()
     user_prompt = f"Meeting: {meeting.title} ({meeting.meeting_date})\nTranscript:\n{trimmed_text}"
     client = OpenAI(api_key=api_key)
     response = client.chat.completions.create(
