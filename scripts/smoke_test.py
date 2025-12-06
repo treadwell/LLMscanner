@@ -24,7 +24,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--llm",
         choices=["none", "openai"],
-        default="none",
+        default="openai",
         help="Extraction mode passed through to process_meetings.",
     )
     parser.add_argument("--llm-model", default="gpt-5.1", help="LLM model when using OpenAI.")

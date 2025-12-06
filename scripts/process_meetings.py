@@ -30,6 +30,12 @@ DATE_FMT = "%Y-%m-%d"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PROMPTS_DIR = REPO_ROOT / "prompts"
 LLM_SYSTEM_PROMPT_PATH = PROMPTS_DIR / "llm_extraction_system.txt"
+LLM_USER_PROMPT_PATH = PROMPTS_DIR / "llm_extraction_user.txt"
+LLM_RISKS_PROMPT_PATH = PROMPTS_DIR / "risks.txt"
+LLM_ISSUES_PROMPT_PATH = PROMPTS_DIR / "issues.txt"
+LLM_TASKS_PROMPT_PATH = PROMPTS_DIR / "tasks.txt"
+LLM_DEVELOPMENT_PROMPT_PATH = PROMPTS_DIR / "development.txt"
+PANDOC_PDF_ENGINE = os.getenv("PANDOC_PDF_ENGINE", "xelatex")
 
 
 @dataclass
@@ -52,7 +58,7 @@ class Item:
 
 def parse_args() -> argparse.Namespace:
     today = dt.date.today()
-    default_start = today - dt.timedelta(days=7)
+    default_start = today
     parser = argparse.ArgumentParser(
         description="Scan meeting transcripts in Calibre and update Markdown logs."
     )
@@ -66,7 +72,7 @@ def parse_args() -> argparse.Namespace:
         "--start",
         type=str,
         default=default_start.strftime(DATE_FMT),
-        help="Inclusive start date (YYYY-MM-DD). Defaults to 7 days ago.",
+        help="Inclusive start date (YYYY-MM-DD). Defaults to today.",
     )
     parser.add_argument(
         "--end",
@@ -126,11 +132,41 @@ def normalize_text(value: str) -> str:
 
 
 def load_system_prompt() -> str:
-    """Load the LLM system prompt from disk so it can be edited without code changes."""
+    """Load the LLM system prompt plus category prompts so they can be edited without code changes."""
     try:
-        return LLM_SYSTEM_PROMPT_PATH.read_text(encoding="utf-8").strip()
+        base = LLM_SYSTEM_PROMPT_PATH.read_text(encoding="utf-8").strip()
+        risks = LLM_RISKS_PROMPT_PATH.read_text(encoding="utf-8").strip()
+        issues = LLM_ISSUES_PROMPT_PATH.read_text(encoding="utf-8").strip()
+        tasks = LLM_TASKS_PROMPT_PATH.read_text(encoding="utf-8").strip()
+        development = LLM_DEVELOPMENT_PROMPT_PATH.read_text(encoding="utf-8").strip()
     except FileNotFoundError as exc:
-        raise RuntimeError(f"Missing LLM system prompt file: {LLM_SYSTEM_PROMPT_PATH}") from exc
+        missing = getattr(exc, "filename", str(exc))
+        raise RuntimeError(f"Missing LLM prompt file: {missing}") from exc
+
+    sections = [
+        base,
+        "\n[RISKS]\n" + risks,
+        "\n[ISSUES]\n" + issues,
+        "\n[TASKS]\n" + tasks,
+        "\n[DEVELOPMENT]\n" + development,
+    ]
+    return "\n".join(sections)
+
+
+def build_user_prompt(meeting: Meeting, transcript: str) -> str:
+    """Load and format the user prompt for the LLM call."""
+    try:
+        template = LLM_USER_PROMPT_PATH.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"Missing LLM user prompt file: {LLM_USER_PROMPT_PATH}") from exc
+    try:
+        return template.format(
+            meeting_title=meeting.title,
+            meeting_date=meeting.meeting_date,
+            transcript=transcript,
+        )
+    except KeyError as exc:
+        raise RuntimeError(f"LLM user prompt template is missing placeholder: {exc}") from exc
 
 
 def load_meetings(
@@ -250,7 +286,7 @@ def llm_extract_items_openai(
 
     trimmed_text = text[:max_chars]
     system_prompt = load_system_prompt()
-    user_prompt = f"Meeting: {meeting.title} ({meeting.meeting_date})\nTranscript:\n{trimmed_text}"
+    user_prompt = build_user_prompt(meeting, trimmed_text)
     client = OpenAI(api_key=api_key)
     response = client.chat.completions.create(
         model=model,
@@ -259,7 +295,7 @@ def llm_extract_items_openai(
             {"role": "user", "content": user_prompt},
         ],
         temperature=0.2,
-        max_tokens=800,
+        max_completion_tokens=800,
     )
     content = response.choices[0].message.content or "[]"
 
@@ -589,7 +625,7 @@ def render_pdf_from_markdown(
         temp_file.flush()
         input_path = Path(temp_file.name)
 
-    cmd = ["pandoc", str(input_path), "-o", str(pdf_path), "--pdf-engine=pdflatex"]
+    cmd = ["pandoc", str(input_path), "-o", str(pdf_path), f"--pdf-engine={PANDOC_PDF_ENGINE}"]
     if extra_args:
         cmd.extend(extra_args)
     try:
@@ -765,6 +801,7 @@ def process(args: argparse.Namespace) -> None:
         if not text:
             print(f"Skipping {meeting.title}: no searchable text available.")
             continue
+        items: List[Item] = []
         if args.llm == "openai":
             try:
                 items = llm_extract_items_openai(text, meeting, args.llm_model, args.llm_max_chars)

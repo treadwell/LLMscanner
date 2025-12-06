@@ -1,0 +1,5 @@
+Extract and consolidate risks:
+- Risk = potential future problem/negative outcome with uncertainty.
+- Include clear owner (person best positioned to act) or Unassigned if none is named anywhere.
+- Use concise, specific summaries; merge duplicates into a single concise risk.
+- Output risks with type `risk`.

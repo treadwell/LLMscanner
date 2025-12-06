@@ -1,0 +1,6 @@
+Extract and consolidate development feedback:
+- Grow = development opportunity; Glow = positive feedback.
+- Always set owner to the person whose section the item is in; keep names verbatim (apostrophes/dashes preserved). Use Unassigned only if no person is mentioned anywhere.
+- Keep summaries concrete; include behavior shorthand if present (Student/Teacher/Community/Company).
+- Merge duplicate/similar grows/glows into single concise entries.
+- Output grows with type `grow` and glows with type `glow`.

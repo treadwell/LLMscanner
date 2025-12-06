@@ -1,0 +1,5 @@
+Extract and consolidate issues:
+- Issue = current problem/blocker/defect already happening.
+- Include owner (person driving resolution) or Unassigned if none is named anywhere.
+- Make summaries concrete; merge duplicates into a single consolidated issue.
+- Output issues with type `issue`.

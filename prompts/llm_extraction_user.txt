@@ -1,0 +1,3 @@
+Meeting: {meeting_title} ({meeting_date})
+Transcript:
+{transcript}

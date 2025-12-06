@@ -6,7 +6,7 @@ Utilities for extracting actionable items from meeting transcripts stored in a C
 - Ensure Python 3.11+ is installed.
 - Optional: create and activate a virtual environment (`python3 -m venv .venv && source .venv/bin/activate`).
 - Optional: install `python-dotenv` to auto-load `.env` (`pip install python-dotenv`), or export env vars manually.
-- Run the meeting processor (defaults to the last 7 days):  
+- Run the meeting processor (defaults to today only):  
   `python3 scripts/process_meetings.py`
 
 ## Meeting Processing
@@ -18,7 +18,7 @@ Utilities for extracting actionable items from meeting transcripts stored in a C
 - After each non-dry run, PDFs are rendered in landscape alongside each log (`*.pdf`), overwriting prior PDFs. The development PDF is regrouped by person with one page per person. Requires `pandoc` + a PDF engine (e.g., `pdflatex`) installed.
 
 ## Smoke Test
-- Dry-run the processor for a narrow window (defaults to yesterday):  
+- Dry-run the processor for a narrow window (defaults to today):  
   `python3 scripts/smoke_test.py`
 - Include OpenAI extraction and an API ping to validate the key/connectivity:  
   `python3 scripts/smoke_test.py --llm openai --ping-openai --start 2025-11-24 --end 2025-11-25`

@@ -1,0 +1,6 @@
+Extract and consolidate tasks/actions:
+- Task = actionable next step with a clear outcome.
+- Include owner (person responsible) or Unassigned if none is named anywhere.
+- Capture due date if explicitly stated; otherwise leave blank.
+- Merge duplicates/overlaps into one concise task.
+- Output tasks with type `task`.
