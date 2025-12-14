@@ -4,7 +4,11 @@ set -euo pipefail
 
 PROJECT_ROOT="/Users/kbrooks/Dropbox/Projects/LLMscanner"
 CALIBRE_ROOT="/Users/kbrooks/Dropbox/Books/Calibre Travel Library"
-PYTHON_BIN="${PYTHON_BIN:-/Library/Frameworks/Python.framework/Versions/3.11/bin/python3}"
+DEFAULT_PYTHON_BIN="$PROJECT_ROOT/.venv/bin/python"
+if [ ! -x "$DEFAULT_PYTHON_BIN" ]; then
+  DEFAULT_PYTHON_BIN="/Library/Frameworks/Python.framework/Versions/3.11/bin/python3"
+fi
+PYTHON_BIN="${PYTHON_BIN:-$DEFAULT_PYTHON_BIN}"
 LOG_DIR="$PROJECT_ROOT/logs"
 TIMESTAMP="$(date '+%Y-%m-%d %H:%M:%S')"
 LOG_FILE="$LOG_DIR/cron.log"
@@ -21,9 +25,17 @@ if [ -f "$ENV_FILE" ]; then
   set +a
 fi
 
+# Force native arm64 on Apple Silicon when available (avoids Rosetta/x86_64 wheel mismatches).
+ARCH_PREFIX=()
+if command -v arch >/dev/null 2>&1 && sysctl -n hw.optional.arm64 >/dev/null 2>&1; then
+  if sysctl -n hw.optional.arm64 | grep -q "1"; then
+    ARCH_PREFIX=(arch -arm64)
+  fi
+fi
+
 {
-  echo "[$TIMESTAMP] Running nightly meeting processor..."
-  "$PYTHON_BIN" "$PROJECT_ROOT/scripts/process_meetings.py" \
+  echo "[$TIMESTAMP] Running nightly meeting processor with $PYTHON_BIN (${ARCH_PREFIX[*]:-native})..."
+  "${ARCH_PREFIX[@]}" "$PYTHON_BIN" "$PROJECT_ROOT/scripts/process_meetings.py" \
     --calibre-root "$CALIBRE_ROOT" \
     --log-dir "$LOG_DIR"
   echo "[$TIMESTAMP] Completed."
