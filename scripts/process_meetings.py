@@ -282,7 +282,9 @@ def llm_extract_items_openai(
     try:
         from openai import OpenAI  # type: ignore
     except Exception as exc:
-        raise RuntimeError("openai package not installed") from exc
+        raise RuntimeError(
+            f"openai import failed using interpreter {sys.executable}: {exc!r}"
+        ) from exc
 
     trimmed_text = text[:max_chars]
     system_prompt = load_system_prompt()

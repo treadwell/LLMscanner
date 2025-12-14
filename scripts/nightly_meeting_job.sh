@@ -8,9 +8,18 @@ PYTHON_BIN="${PYTHON_BIN:-/Library/Frameworks/Python.framework/Versions/3.11/bin
 LOG_DIR="$PROJECT_ROOT/logs"
 TIMESTAMP="$(date '+%Y-%m-%d %H:%M:%S')"
 LOG_FILE="$LOG_DIR/cron.log"
+ENV_FILE="$PROJECT_ROOT/.env"
 
 mkdir -p "$LOG_DIR"
 cd "$PROJECT_ROOT"
+
+# Load local env vars (e.g., OPENAI_API_KEY) without requiring python-dotenv.
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  # shellcheck source=/Users/kbrooks/Dropbox/Projects/LLMscanner/.env
+  . "$ENV_FILE"
+  set +a
+fi
 
 {
   echo "[$TIMESTAMP] Running nightly meeting processor..."
