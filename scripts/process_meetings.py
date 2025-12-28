@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import datetime as dt
 import json
 import os
@@ -49,11 +50,12 @@ class Meeting:
 
 @dataclass
 class Item:
-    kind: str  # "risk", "issue", "task", "grow", "glow"
+    kind: str  # "grow" or "glow"
     summary: str
     owner: str
     meeting: Meeting
     due: Optional[str] = None
+    behavior: Optional[str] = None
 
 
 def parse_args() -> argparse.Namespace:
@@ -107,7 +109,7 @@ def parse_args() -> argparse.Namespace:
         "--llm",
         choices=["none", "openai"],
         default="openai",
-        help="Use an LLM for extraction instead of keyword heuristics.",
+        help="Use an LLM for development extraction (grow/glow) instead of keyword heuristics.",
     )
     parser.add_argument(
         "--llm-model",
@@ -118,7 +120,12 @@ def parse_args() -> argparse.Namespace:
         "--llm-max-chars",
         type=int,
         default=20000,
-        help="Max characters from the transcript to send to the LLM (to control token costs).",
+        help="Max characters from the transcript to send to the LLM (to control token costs). Use 0 for no limit.",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Include diagnostic output for each meeting.",
     )
     return parser.parse_args()
 
@@ -135,9 +142,6 @@ def load_system_prompt() -> str:
     """Load the LLM system prompt plus category prompts so they can be edited without code changes."""
     try:
         base = LLM_SYSTEM_PROMPT_PATH.read_text(encoding="utf-8").strip()
-        risks = LLM_RISKS_PROMPT_PATH.read_text(encoding="utf-8").strip()
-        issues = LLM_ISSUES_PROMPT_PATH.read_text(encoding="utf-8").strip()
-        tasks = LLM_TASKS_PROMPT_PATH.read_text(encoding="utf-8").strip()
         development = LLM_DEVELOPMENT_PROMPT_PATH.read_text(encoding="utf-8").strip()
     except FileNotFoundError as exc:
         missing = getattr(exc, "filename", str(exc))
@@ -145,9 +149,6 @@ def load_system_prompt() -> str:
 
     sections = [
         base,
-        "\n[RISKS]\n" + risks,
-        "\n[ISSUES]\n" + issues,
-        "\n[TASKS]\n" + tasks,
         "\n[DEVELOPMENT]\n" + development,
     ]
     return "\n".join(sections)
@@ -273,7 +274,12 @@ def extract_from_pdf(pdf_path: Path) -> Optional[str]:
 
 
 def llm_extract_items_openai(
-    text: str, meeting: Meeting, model: str, max_chars: int
+    text: str,
+    meeting: Meeting,
+    model: str,
+    max_chars: int,
+    *,
+    verbose: bool = False,
 ) -> List[Item]:
     """Call OpenAI to extract items. Requires OPENAI_API_KEY."""
     api_key = os.getenv("OPENAI_API_KEY")
@@ -286,7 +292,14 @@ def llm_extract_items_openai(
             f"openai import failed using interpreter {sys.executable}: {exc!r}"
         ) from exc
 
-    trimmed_text = text[:max_chars]
+    if max_chars > 0:
+        trimmed_text = text[:max_chars]
+        if verbose and len(text) > max_chars:
+            print(
+                f"Trimming transcript for {meeting.title}: {len(text)} -> {max_chars} chars."
+            )
+    else:
+        trimmed_text = text
     system_prompt = load_system_prompt()
     user_prompt = build_user_prompt(meeting, trimmed_text)
     client = OpenAI(api_key=api_key)
@@ -299,7 +312,20 @@ def llm_extract_items_openai(
         temperature=0.2,
         max_completion_tokens=800,
     )
-    content = response.choices[0].message.content or "[]"
+    if not response.choices:
+        raise RuntimeError("LLM returned no choices.")
+    choice = response.choices[0]
+    content = choice.message.content
+    if content is None or not content.strip():
+        finish_reason = getattr(choice, "finish_reason", "unknown")
+        raise RuntimeError(f"LLM returned empty content (finish_reason={finish_reason}).")
+    if verbose:
+        response_id = getattr(response, "id", "unknown")
+        finish_reason = getattr(choice, "finish_reason", "unknown")
+        print(
+            f"LLM response received for {meeting.title}: id={response_id}, "
+            f"finish_reason={finish_reason}, chars={len(content)}."
+        )
 
     def strip_code_fences(raw: str) -> str:
         fenced = raw.strip()
@@ -319,17 +345,29 @@ def llm_extract_items_openai(
 
     items: List[Item] = []
     if not isinstance(data, list):
+        if verbose:
+            print(
+                f"LLM response for {meeting.title} is {type(data).__name__}, expected a list."
+            )
         return items
+    raw_count = len(data)
+    skipped_non_dict = 0
+    skipped_unknown_kind = 0
+    skipped_missing_summary = 0
     for obj in data:
         if not isinstance(obj, dict):
+            skipped_non_dict += 1
             continue
         kind = normalize_text(obj.get("type", ""))
-        if kind not in {"risk", "issue", "task", "grow", "glow"}:
+        if kind not in {"grow", "glow"}:
+            skipped_unknown_kind += 1
             continue
         summary = obj.get("summary", "")
         owner = obj.get("owner", "Unassigned") or "Unassigned"
         due = obj.get("due") or None
+        behavior = obj.get("behavior") or None
         if not summary:
+            skipped_missing_summary += 1
             continue
         items.append(
             Item(
@@ -338,9 +376,117 @@ def llm_extract_items_openai(
                 owner=owner.strip(),
                 meeting=meeting,
                 due=due.strip() if isinstance(due, str) else None,
+                behavior=behavior.strip() if isinstance(behavior, str) else None,
             )
         )
+    if verbose:
+        print(
+            f"LLM parsed {raw_count} item(s) for {meeting.title}: "
+            f"accepted={len(items)}, skipped_non_dict={skipped_non_dict}, "
+            f"skipped_unknown_kind={skipped_unknown_kind}, "
+            f"skipped_missing_summary={skipped_missing_summary}."
+        )
     return items
+
+
+def append_development_csv_by_person(items: Sequence[Item], log_dir: Path) -> int:
+    csv_dir = log_dir / "development_by_person"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    expected_headers = ["Person", "Date", "Meeting", "Kind", "Behavior", "Summary"]
+    legacy_headers = ["Person", "Date", "Behavior", "Summary", "Meeting"]
+    appended = 0
+    for item in items:
+        person = item.owner or "Unassigned"
+        safe_name = re.sub(r"[^A-Za-z0-9]+", "_", person.strip()).strip("_") or "Unassigned"
+        csv_path = csv_dir / f"{safe_name}.csv"
+
+        def normalize_kind(value: str) -> str:
+            lowered = value.strip().lower()
+            if lowered == "grow":
+                return "Grow"
+            if lowered == "glow":
+                return "Glow"
+            return value.strip().title()
+
+        def normalize_behavior(value: Optional[str]) -> str:
+            if not value:
+                return ""
+            cleaned = value.strip()
+            if not cleaned:
+                return ""
+            mapping = {
+                "student": "Student",
+                "teacher": "Teacher",
+                "community": "Community",
+                "company": "Company",
+            }
+            return mapping.get(cleaned.lower(), cleaned)
+
+        def split_legacy_behavior(value: str) -> Tuple[str, str]:
+            raw = value.strip()
+            if not raw:
+                return "", ""
+            if ":" in raw:
+                kind_part, behavior_part = raw.split(":", 1)
+                return normalize_kind(kind_part), normalize_behavior(behavior_part)
+            return normalize_kind(raw), ""
+
+        existing_headers: Optional[List[str]] = None
+        if csv_path.exists() and csv_path.stat().st_size > 0:
+            with csv_path.open("r", encoding="utf-8", newline="") as handle:
+                reader = csv.reader(handle)
+                existing_headers = next(reader, [])
+            if existing_headers == legacy_headers:
+                legacy_rows: List[List[str]] = []
+                with csv_path.open("r", encoding="utf-8", newline="") as handle:
+                    reader = csv.reader(handle)
+                    next(reader, None)
+                    for row in reader:
+                        if not row:
+                            continue
+                        padded = list(row) + [""] * (len(legacy_headers) - len(row))
+                        if len(padded) < len(legacy_headers):
+                            continue
+                        person_val, date_val, legacy_behavior, summary, meeting = padded[:5]
+                        kind_val, behavior_val = split_legacy_behavior(legacy_behavior)
+                        legacy_rows.append(
+                            [person_val, date_val, meeting, kind_val, behavior_val, summary]
+                        )
+                temp_path = csv_path.with_suffix(".csv.tmp")
+                with temp_path.open("w", encoding="utf-8", newline="") as handle:
+                    writer = csv.writer(handle)
+                    writer.writerow(expected_headers)
+                    writer.writerows(legacy_rows)
+                temp_path.replace(csv_path)
+                existing_headers = expected_headers
+            elif existing_headers != expected_headers:
+                print(
+                    f"Warning: {csv_path} has unexpected headers {existing_headers}; "
+                    "appending with the new format."
+                )
+
+        write_header = not csv_path.exists() or csv_path.stat().st_size == 0
+        if existing_headers == expected_headers:
+            write_header = False
+
+        kind_label = normalize_kind(item.kind)
+        behavior_value = normalize_behavior(item.behavior)
+        with csv_path.open("a", encoding="utf-8", newline="") as handle:
+            writer = csv.writer(handle)
+            if write_header:
+                writer.writerow(expected_headers)
+            writer.writerow(
+                [
+                    person,
+                    item.meeting.meeting_date.strftime(DATE_FMT),
+                    item.meeting.title,
+                    kind_label,
+                    behavior_value,
+                    item.summary,
+                ]
+            )
+        appended += 1
+    return appended
 
 
 def load_log_table(path: Path) -> Tuple[List[str], List[Dict[str, str]]]:
@@ -779,6 +925,20 @@ def process(args: argparse.Namespace) -> None:
     start_date = as_date(args.start)
     end_date = as_date(args.end)
     tag_prefixes = args.tag_prefixes or list(MEETING_TAG_PREFIXES_DEFAULT)
+    prefix_label = ", ".join(tag_prefixes)
+    author_label = args.author or "any"
+    print(
+        f"Processing meetings from {start_date} to {end_date} "
+        f"(tags={prefix_label}, author={author_label})."
+    )
+    print(
+        f"LLM mode: {args.llm} (model={args.llm_model}, max_chars={args.llm_max_chars}), "
+        f"dry_run={args.dry_run}."
+    )
+    if args.verbose:
+        print(f"Calibre root: {calibre_root}")
+        print(f"Log dir: {log_dir}")
+
     meetings = load_meetings(
         metadata_db,
         calibre_root,
@@ -788,135 +948,89 @@ def process(args: argparse.Namespace) -> None:
         author_filter=args.author,
     )
     if not meetings:
-        prefix_label = ", ".join(tag_prefixes)
         print(f"No meetings tagged with prefixes ({prefix_label}) between {start_date} and {end_date}.")
-        update_development_log(log_dir / "development.md", [], args.dry_run)
         return
+    print(f"Found {len(meetings)} meeting(s) matching filters.")
 
-    all_items: List[Item] = []
+    development_items: List[Item] = []
     for meeting in meetings:
+        text_source = "fts"
+        pdf_path: Optional[Path] = None
         text = load_searchable_text(fts_db, meeting.book_id)
         if not text:
             pdf_path = fetch_pdf_path(metadata_db, calibre_root, meeting)
             if pdf_path:
                 text = extract_from_pdf(pdf_path)
+                text_source = "pdf" if text else "pdf-empty"
+            else:
+                text_source = "none"
         if not text:
-            print(f"Skipping {meeting.title}: no searchable text available.")
+            if text_source == "pdf-empty" and pdf_path:
+                print(f"Skipping {meeting.title}: PDF found at {pdf_path} but no text extracted.")
+            elif text_source == "none":
+                print(f"Skipping {meeting.title}: no searchable text or PDF available.")
+            else:
+                print(f"Skipping {meeting.title}: no searchable text available.")
             continue
+        text_len = len(text)
+        if args.verbose:
+            print(
+                f"Meeting {meeting.title} ({meeting.meeting_date}, tag={meeting.tag}, "
+                f"source={text_source}, chars={text_len})."
+            )
         items: List[Item] = []
         if args.llm == "openai":
             try:
-                items = llm_extract_items_openai(text, meeting, args.llm_model, args.llm_max_chars)
+                items = llm_extract_items_openai(
+                    text,
+                    meeting,
+                    args.llm_model,
+                    args.llm_max_chars,
+                    verbose=args.verbose,
+                )
             except Exception as exc:
-                print(f"LLM extraction failed for {meeting.title}: {exc}")
+                print(
+                    f"LLM extraction failed for {meeting.title} "
+                    f"(source={text_source}, chars={text_len}): {exc}"
+                )
                 items = []
+        elif args.verbose:
+            print(f"LLM extraction disabled (llm={args.llm}); skipping {meeting.title}.")
         if not items:
-            print(f"No actionable items found in {meeting.title}.")
+            llm_note = (
+                f"llm={args.llm_model}" if args.llm == "openai" else f"llm={args.llm}"
+            )
+            print(
+                f"No development items found in {meeting.title} "
+                f"(date={meeting.meeting_date}, source={text_source}, chars={text_len}, {llm_note})."
+            )
             continue
-        all_items.extend(items)
+        if args.verbose:
+            kind_counts = {kind: 0 for kind in ("grow", "glow")}
+            for item in items:
+                kind_counts[item.kind] += 1
+            counts_label = ", ".join(
+                f"{kind}={count}" for kind, count in kind_counts.items() if count
+            )
+            if counts_label:
+                print(
+                    f"Extracted {len(items)} development item(s) from {meeting.title} ({counts_label})."
+                )
+            else:
+                print(f"Extracted {len(items)} development item(s) from {meeting.title}.")
+        development_items.extend(items)
 
-    if not all_items:
-        print("No risks/issues/tasks identified.")
-        update_development_log(log_dir / "development.md", meetings, args.dry_run)
+    if not development_items:
+        print("No development items identified.")
         return
-
-    # Separate items by kind
-    risks = [i for i in all_items if i.kind == "risk"]
-    issues = [i for i in all_items if i.kind == "issue"]
-    tasks = [i for i in all_items if i.kind == "task"]
-    grows = [i for i in all_items if i.kind == "grow"]
-    glows = [i for i in all_items if i.kind == "glow"]
-
-    # Load and merge risks
-    risk_headers, risk_rows = load_log_table(log_dir / "risks.md")
-    if not risk_headers:
-        risk_headers = ["ID", "Date", "Meeting", "Owner", "Description", "Status", "Incidents"]
-        risk_rows = []
-    risk_rows = merge_items(risk_rows, risks, "R", risk_headers, ("Description",))
-
-    issue_headers, issue_rows = load_log_table(log_dir / "issues.md")
-    if not issue_headers:
-        issue_headers = ["ID", "Date", "Meeting", "Owner", "Description", "Status", "Incidents"]
-        issue_rows = []
-    issue_rows = merge_items(issue_rows, issues, "I", issue_headers, ("Description",))
-
-    task_headers, task_rows = load_log_table(log_dir / "tasks.md")
-    if not task_headers:
-        task_headers = ["ID", "Owner", "Description", "Meeting", "Due", "Status", "Incidents"]
-        task_rows = []
-    task_rows = merge_items(task_rows, tasks, "T", task_headers, ("Owner", "Description"))
-
-    grows_headers, grows_rows, glows_headers, glows_rows = load_development_tables(log_dir / "development.md")
-    if not grows_headers:
-        grows_headers = ["ID", "Person", "Area"]
-        grows_rows = []
-    else:
-        grows_headers, grows_rows = normalize_development_table(
-            grows_headers,
-            grows_rows,
-            desc_field="Area",
-            prefix="G",
-        )
-    if not glows_headers:
-        glows_headers = ["ID", "Person", "Note"]
-        glows_rows = []
-    else:
-        glows_headers, glows_rows = normalize_development_table(
-            glows_headers,
-            glows_rows,
-            desc_field="Note",
-            prefix="GL",
-        )
-
-    grows_rows = merge_development_items(
-        grows_rows,
-        grows,
-        "G",
-        "Area",
-    )
-    glows_rows = merge_development_items(
-        glows_rows,
-        glows,
-        "GL",
-        "Note",
-    )
-
-    grows_rows = sort_by_person(grows_rows, person_field="Person", date_field="Date")
-    glows_rows = sort_by_person(glows_rows, person_field="Person", date_field="Date")
-
     if args.dry_run:
-        print(
-            f"[dry-run] Would write {len(risk_rows)} risks, {len(issue_rows)} issues, "
-            f"{len(task_rows)} tasks, {len(grows_rows)} grows, {len(glows_rows)} glows."
-        )
-        update_development_log(log_dir / "development_runs.md", meetings, args.dry_run)
-    else:
-        write_log(log_dir / "risks.md", risk_headers, risk_rows)
-        write_log(log_dir / "issues.md", issue_headers, issue_rows)
-        write_log(log_dir / "tasks.md", task_headers, task_rows)
-        write_development_tables(log_dir / "development.md", grows_headers, grows_rows, glows_headers, glows_rows)
-        update_development_log(log_dir / "development_runs.md", meetings, args.dry_run)
-
-        pdf_args = [
-            "-V",
-            "geometry=landscape",
-            "--from=markdown+raw_tex",
-            "-V",
-            r"header-includes=\usepackage{tabularx}",
-        ]
-        for md_name in ("risks.md", "issues.md", "tasks.md", "development_runs.md"):
-            render_pdf_from_markdown(log_dir / md_name, extra_args=pdf_args)
-
-        # Development PDF: one page per person in landscape
-        dev_person_pages = build_development_person_pages(grows_headers, grows_rows, glows_headers, glows_rows)
-        render_pdf_from_markdown(
-            log_dir / "development.md",
-            extra_args=pdf_args,
-            content=dev_person_pages,
-        )
+        print(f"[dry-run] Would append {len(development_items)} development item(s).")
+        return
+    appended = append_development_csv_by_person(development_items, log_dir)
+    csv_dir = log_dir / "development_by_person"
     print(
-        f"Processed {len(meetings)} meeting(s): {len(risks)} risks, "
-        f"{len(issues)} issues, {len(tasks)} tasks, {len(grows)} grows, {len(glows)} glows."
+        f"Processed {len(meetings)} meeting(s): appended {appended} development item(s) "
+        f"to {csv_dir}."
     )
 
 

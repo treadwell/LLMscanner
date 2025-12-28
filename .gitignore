@@ -18,6 +18,4 @@ dist/
 .env
 
 # Generated logs
-logs/*.md
-logs/*.pdf
-logs/cron.log
+logs/

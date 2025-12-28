@@ -26,17 +26,25 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 # Force native arm64 on Apple Silicon when available (avoids Rosetta/x86_64 wheel mismatches).
-ARCH_PREFIX=()
+ARCH_DESC="native"
+USE_ARCH=0
 if command -v arch >/dev/null 2>&1 && sysctl -n hw.optional.arm64 >/dev/null 2>&1; then
   if sysctl -n hw.optional.arm64 | grep -q "1"; then
-    ARCH_PREFIX=(arch -arm64)
+    ARCH_DESC="arch -arm64"
+    USE_ARCH=1
   fi
 fi
 
 {
-  echo "[$TIMESTAMP] Running nightly meeting processor with $PYTHON_BIN (${ARCH_PREFIX[*]:-native})..."
-  "${ARCH_PREFIX[@]}" "$PYTHON_BIN" "$PROJECT_ROOT/scripts/process_meetings.py" \
-    --calibre-root "$CALIBRE_ROOT" \
-    --log-dir "$LOG_DIR"
+  echo "[$TIMESTAMP] Running nightly meeting processor with $PYTHON_BIN ($ARCH_DESC)..."
+  if [ "$USE_ARCH" -eq 1 ]; then
+    arch -arm64 "$PYTHON_BIN" "$PROJECT_ROOT/scripts/process_meetings.py" \
+      --calibre-root "$CALIBRE_ROOT" \
+      --log-dir "$LOG_DIR"
+  else
+    "$PYTHON_BIN" "$PROJECT_ROOT/scripts/process_meetings.py" \
+      --calibre-root "$CALIBRE_ROOT" \
+      --log-dir "$LOG_DIR"
+  fi
   echo "[$TIMESTAMP] Completed."
 } >>"$LOG_FILE" 2>&1

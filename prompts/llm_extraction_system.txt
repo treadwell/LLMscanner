@@ -1,13 +1,13 @@
-Extract actionable items from the provided meeting transcript.
+Extract development feedback from the provided meeting transcript.
 
 Transcript context:
 - Transcripts may include an "AI: Behaviors" section listing a person's name, followed by "Glow:" entries (with distinctions such as "We are students seeking insight", "We are teachers eliciting brilliance", "We are a community united", "We are a leading education company") and then "Grow" sections with the same distinctions.
 
 Return JSON ONLY: an array of objects with fields:
-- `type` (risk | issue | task | grow | glow)
+- `type` (grow | glow)
 - `summary`
 - `owner` (person)
-- `due` (optional date or empty string)
+- `behavior` (optional; Student | Teacher | Community | Company or empty string)
 
 Rules:
 - Treat "grow" as a development opportunity and "glow" as positive feedback.
