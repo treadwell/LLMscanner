@@ -27,7 +27,29 @@ def parse_args() -> argparse.Namespace:
         default="openai",
         help="Extraction mode passed through to process_meetings.",
     )
-    parser.add_argument("--llm-model", default="gpt-5.1", help="LLM model when using OpenAI.")
+    parser.add_argument("--llm-model", default="gpt-5.2", help="LLM model when using OpenAI.")
+    parser.add_argument(
+        "--llm-max-output-tokens",
+        type=int,
+        default=None,
+        help="Max completion tokens passed through to process_meetings.",
+    )
+    parser.add_argument(
+        "--llm-debug",
+        action="store_true",
+        help="Write LLM request/response payloads to disk for debugging.",
+    )
+    parser.add_argument(
+        "--llm-debug-title",
+        default=None,
+        help="Only write LLM debug logs when the meeting title contains this text (case-insensitive).",
+    )
+    parser.add_argument(
+        "--llm-debug-dir",
+        type=Path,
+        default=None,
+        help="Directory for LLM debug logs (defaults to log-dir/llm_debug).",
+    )
     parser.add_argument(
         "--ping-openai",
         action="store_true",
@@ -87,6 +109,14 @@ def run_processor(args: argparse.Namespace) -> int:
         "--llm-model",
         args.llm_model,
     ]
+    if args.llm_max_output_tokens is not None:
+        cmd.extend(["--llm-max-output-tokens", str(args.llm_max_output_tokens)])
+    if args.llm_debug:
+        cmd.append("--llm-debug")
+    if args.llm_debug_title:
+        cmd.extend(["--llm-debug-title", args.llm_debug_title])
+    if args.llm_debug_dir:
+        cmd.extend(["--llm-debug-dir", str(args.llm_debug_dir)])
     if not args.write_logs:
         cmd.append("--dry-run")
     if args.calibre_root:

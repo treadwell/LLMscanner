@@ -16,7 +16,7 @@ import tempfile
 from html import unescape
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 try:
     from dotenv import load_dotenv  # type: ignore
@@ -113,7 +113,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--llm-model",
-        default="gpt-5.1",
+        default="gpt-5.2",
         help="LLM model name (when --llm=openai).",
     )
     parser.add_argument(
@@ -121,6 +121,28 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=20000,
         help="Max characters from the transcript to send to the LLM (to control token costs). Use 0 for no limit.",
+    )
+    parser.add_argument(
+        "--llm-max-output-tokens",
+        type=int,
+        default=1600,
+        help="Max completion tokens for the LLM response.",
+    )
+    parser.add_argument(
+        "--llm-debug",
+        action="store_true",
+        help="Write LLM request/response payloads to disk for debugging.",
+    )
+    parser.add_argument(
+        "--llm-debug-title",
+        default=None,
+        help="Only write LLM debug logs when the meeting title contains this text (case-insensitive).",
+    )
+    parser.add_argument(
+        "--llm-debug-dir",
+        type=Path,
+        default=None,
+        help="Directory for LLM debug logs (defaults to log-dir/llm_debug).",
     )
     parser.add_argument(
         "--verbose",
@@ -261,6 +283,57 @@ def extract_from_pdf(pdf_path: Path) -> Optional[str]:
         from pypdf import PdfReader  # type: ignore
     except Exception:
         return None
+
+
+def write_llm_debug(
+    debug_dir: Path,
+    meeting: Meeting,
+    request_messages: List[Dict[str, str]],
+    selection_note: Dict[str, object],
+    *,
+    response: Any,
+    error_message: Optional[str],
+) -> None:
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    slug = re.sub(r"[^A-Za-z0-9]+", "_", meeting.title).strip("_").lower() or "meeting"
+    date_label = meeting.meeting_date.strftime(DATE_FMT)
+    filename = f"{date_label}_{meeting.book_id}_{slug}.json"
+    path = debug_dir / filename
+    response_id = getattr(response, "id", None) if response else None
+    choices = getattr(response, "choices", None) if response else None
+    finish_reason = None
+    content = None
+    if choices:
+        choice = choices[0]
+        finish_reason = getattr(choice, "finish_reason", None)
+        message = getattr(choice, "message", None)
+        content = getattr(message, "content", None) if message else None
+    usage = getattr(response, "usage", None) if response else None
+    if usage is not None:
+        try:
+            usage = usage.model_dump()
+        except Exception:
+            usage = str(usage)
+    payload = {
+        "meeting": {
+            "book_id": meeting.book_id,
+            "title": meeting.title,
+            "date": meeting.meeting_date.strftime(DATE_FMT),
+            "tag": meeting.tag,
+        },
+        "selection": selection_note,
+        "request": {
+            "messages": request_messages,
+        },
+        "response": {
+            "id": response_id,
+            "finish_reason": finish_reason,
+            "content": content,
+            "usage": usage,
+        },
+        "error": error_message,
+    }
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
     try:
         reader = PdfReader(str(pdf_path))
         chunks = []
@@ -278,6 +351,9 @@ def llm_extract_items_openai(
     meeting: Meeting,
     model: str,
     max_chars: int,
+    max_output_tokens: int,
+    debug_dir: Optional[Path],
+    debug_title: Optional[str],
     *,
     verbose: bool = False,
 ) -> List[Item]:
@@ -292,26 +368,77 @@ def llm_extract_items_openai(
             f"openai import failed using interpreter {sys.executable}: {exc!r}"
         ) from exc
 
-    if max_chars > 0:
+    marker = "AI: Behaviors"
+    marker_index = text.find(marker)
+    selection_note = {}
+    if marker_index != -1:
+        window_chars = 10000
+        end_index = marker_index + window_chars
+        trimmed_text = text[marker_index:end_index]
+        selection_note = {
+            "mode": "marker_window",
+            "marker": marker,
+            "marker_index": marker_index,
+            "window_chars": window_chars,
+        }
+        if verbose:
+            print(
+                f"Using transcript window for {meeting.title}: "
+                f"marker='{marker}' at {marker_index}, chars={len(trimmed_text)}."
+            )
+    elif max_chars > 0:
         trimmed_text = text[:max_chars]
+        selection_note = {
+            "mode": "head_trim",
+            "max_chars": max_chars,
+        }
         if verbose and len(text) > max_chars:
             print(
                 f"Trimming transcript for {meeting.title}: {len(text)} -> {max_chars} chars."
             )
     else:
         trimmed_text = text
+        selection_note = {"mode": "full_text"}
     system_prompt = load_system_prompt()
     user_prompt = build_user_prompt(meeting, trimmed_text)
-    client = OpenAI(api_key=api_key)
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.2,
-        max_completion_tokens=800,
+    should_debug = bool(debug_dir) and (
+        not debug_title or debug_title.lower() in meeting.title.lower()
     )
+    response = None
+    error_message = None
+    client = OpenAI(api_key=api_key)
+    request_messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=request_messages,
+            temperature=0.2,
+            max_completion_tokens=max_output_tokens,
+        )
+    except Exception as exc:
+        error_message = f"{type(exc).__name__}: {exc}"
+        if should_debug:
+            write_llm_debug(
+                debug_dir,
+                meeting,
+                request_messages,
+                selection_note,
+                response=None,
+                error_message=error_message,
+            )
+        raise
+    if should_debug:
+        write_llm_debug(
+            debug_dir,
+            meeting,
+            request_messages,
+            selection_note,
+            response=response,
+            error_message=error_message,
+        )
     if not response.choices:
         raise RuntimeError("LLM returned no choices.")
     choice = response.choices[0]
@@ -921,6 +1048,10 @@ def process(args: argparse.Namespace) -> None:
     fts_db = calibre_root / "full-text-search.db"
     log_dir = args.log_dir
     log_dir.mkdir(parents=True, exist_ok=True)
+    debug_dir = None
+    if args.llm_debug:
+        debug_dir = args.llm_debug_dir or (log_dir / "llm_debug")
+        debug_dir.mkdir(parents=True, exist_ok=True)
 
     start_date = as_date(args.start)
     end_date = as_date(args.end)
@@ -932,9 +1063,12 @@ def process(args: argparse.Namespace) -> None:
         f"(tags={prefix_label}, author={author_label})."
     )
     print(
-        f"LLM mode: {args.llm} (model={args.llm_model}, max_chars={args.llm_max_chars}), "
+        f"LLM mode: {args.llm} (model={args.llm_model}, max_chars={args.llm_max_chars}, "
+        f"max_output_tokens={args.llm_max_output_tokens}), "
         f"dry_run={args.dry_run}."
     )
+    if args.llm_debug:
+        print(f"LLM debug logs: {debug_dir}")
     if args.verbose:
         print(f"Calibre root: {calibre_root}")
         print(f"Log dir: {log_dir}")
@@ -986,6 +1120,9 @@ def process(args: argparse.Namespace) -> None:
                     meeting,
                     args.llm_model,
                     args.llm_max_chars,
+                    args.llm_max_output_tokens,
+                    debug_dir,
+                    args.llm_debug_title,
                     verbose=args.verbose,
                 )
             except Exception as exc:

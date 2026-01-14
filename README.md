@@ -36,11 +36,22 @@ Utilities for extracting actionable items from meeting transcripts stored in a C
 - Enable LLM extraction (improves signal from noisy transcripts):
   ```
   OPENAI_API_KEY=sk-... \
-  python3 scripts/process_meetings.py --llm openai --llm-model gpt-5.1
+  python3 scripts/process_meetings.py --llm openai --llm-model gpt-5.2
   ```
-- The script defaults to keyword heuristics when `--llm` is `none`. LLM mode truncates transcripts to `--llm-max-chars` (default 12,000) to control tokens.
+- The script defaults to keyword heuristics when `--llm` is `none`. LLM mode truncates transcripts to `--llm-max-chars` (default 20,000) to control tokens.
+- If the transcript contains `AI: Behaviors`, the LLM only receives the 10,000 characters starting at that marker (fallback is the head of the transcript per `--llm-max-chars`).
+- If you see `finish_reason=length`, raise the output budget with `--llm-max-output-tokens` (default 1600), e.g.:
+  `python3 scripts/process_meetings.py --llm openai --llm-max-output-tokens 3000`
 - Extracted types: risks, issues, tasks, and people development items: `grows` (coaching/development) and `glows` (praise). Grows/Glows live in `logs/development.md`; a run log lives in `logs/development_runs.md`.
 - LLM mode requires outbound network access to `api.openai.com` and a valid `OPENAI_API_KEY` in the environment (see `.env.example`).
+
+## LLM Debugging
+- Capture the full LLM request/response payloads to disk:
+  `python3 scripts/process_meetings.py --llm-debug`
+- Limit debug logging to a specific meeting title (case-insensitive match):
+  `python3 scripts/process_meetings.py --llm-debug --llm-debug-title "Supply Chain weekly working session #1"`
+- Debug logs are written to `logs/llm_debug/` (override with `--llm-debug-dir`).
+- Debug payloads include transcript excerpts and model outputs; `logs/` is gitignored.
 
 ## File Layout
 - `scripts/` — automation and helpers.
