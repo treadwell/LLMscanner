@@ -40,11 +40,15 @@ fi
   if [ "$USE_ARCH" -eq 1 ]; then
     arch -arm64 "$PYTHON_BIN" "$PROJECT_ROOT/scripts/process_meetings.py" \
       --calibre-root "$CALIBRE_ROOT" \
-      --log-dir "$LOG_DIR"
+      --log-dir "$LOG_DIR" \
+      --llm-max-chars 15000 \
+      --llm-max-output-tokens 3000
   else
     "$PYTHON_BIN" "$PROJECT_ROOT/scripts/process_meetings.py" \
       --calibre-root "$CALIBRE_ROOT" \
-      --log-dir "$LOG_DIR"
+      --log-dir "$LOG_DIR" \
+      --llm-max-chars 15000 \
+      --llm-max-output-tokens 3000
   fi
   echo "[$TIMESTAMP] Completed."
 } >>"$LOG_FILE" 2>&1

@@ -6,7 +6,7 @@ Utilities for extracting actionable items from meeting transcripts stored in a C
 - Ensure Python 3.11+ is installed.
 - Optional: create and activate a virtual environment (`python3 -m venv .venv && source .venv/bin/activate`).
 - Optional: install `python-dotenv` to auto-load `.env` (`pip install python-dotenv`), or export env vars manually.
-- Run the meeting processor (defaults to today only):  
+- Run the meeting processor (defaults to the day after the last run date in `logs/development_runs.md` when available, otherwise today):  
   `python3 scripts/process_meetings.py`
 
 ## Meeting Processing
@@ -27,6 +27,8 @@ Utilities for extracting actionable items from meeting transcripts stored in a C
 ## Customize Date Range
 - Include start/end dates:  
   `python3 scripts/process_meetings.py --start 2025-11-01 --end 2025-11-30`
+- Force the default "last run" behavior (uses `logs/development_runs.md` if present):  
+  `python3 scripts/process_meetings.py --start auto --end 2025-11-30`
 - Dry-run to preview counts:  
   `python3 scripts/process_meetings.py --dry-run`
 - Override tag/author filters, e.g.:
@@ -38,10 +40,10 @@ Utilities for extracting actionable items from meeting transcripts stored in a C
   OPENAI_API_KEY=sk-... \
   python3 scripts/process_meetings.py --llm openai --llm-model gpt-5.2
   ```
-- The script defaults to keyword heuristics when `--llm` is `none`. LLM mode truncates transcripts to `--llm-max-chars` (default 20,000) to control tokens.
+- The script defaults to keyword heuristics when `--llm` is `none`. LLM mode truncates transcripts to `--llm-max-chars` (default 15,000) to control tokens.
 - If the transcript contains `AI: Behaviors`, the LLM only receives the 10,000 characters starting at that marker (fallback is the head of the transcript per `--llm-max-chars`).
-- If you see `finish_reason=length`, raise the output budget with `--llm-max-output-tokens` (default 1600), e.g.:
-  `python3 scripts/process_meetings.py --llm openai --llm-max-output-tokens 3000`
+- If you see `finish_reason=length`, raise the output budget with `--llm-max-output-tokens` (default 3000), e.g.:
+  `python3 scripts/process_meetings.py --llm openai --llm-max-output-tokens 4000`
 - Extracted types: risks, issues, tasks, and people development items: `grows` (coaching/development) and `glows` (praise). Grows/Glows live in `logs/development.md`; a run log lives in `logs/development_runs.md`.
 - LLM mode requires outbound network access to `api.openai.com` and a valid `OPENAI_API_KEY` in the environment (see `.env.example`).
 

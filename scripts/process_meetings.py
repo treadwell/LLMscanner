@@ -37,6 +37,7 @@ LLM_ISSUES_PROMPT_PATH = PROMPTS_DIR / "issues.txt"
 LLM_TASKS_PROMPT_PATH = PROMPTS_DIR / "tasks.txt"
 LLM_DEVELOPMENT_PROMPT_PATH = PROMPTS_DIR / "development.txt"
 PANDOC_PDF_ENGINE = os.getenv("PANDOC_PDF_ENGINE", "xelatex")
+RUN_LOG_PATH_DEFAULT = REPO_ROOT / "logs" / "development_runs.md"
 
 
 @dataclass
@@ -60,7 +61,6 @@ class Item:
 
 def parse_args() -> argparse.Namespace:
     today = dt.date.today()
-    default_start = today
     parser = argparse.ArgumentParser(
         description="Scan meeting transcripts in Calibre and update Markdown logs."
     )
@@ -73,8 +73,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--start",
         type=str,
-        default=default_start.strftime(DATE_FMT),
-        help="Inclusive start date (YYYY-MM-DD). Defaults to today.",
+        default="auto",
+        help=(
+            "Inclusive start date (YYYY-MM-DD). Defaults to the day after the last run "
+            "date in development_runs.md (or today if none). Use 'auto' to force the default."
+        ),
     )
     parser.add_argument(
         "--end",
@@ -119,13 +122,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--llm-max-chars",
         type=int,
-        default=20000,
+        default=15000,
         help="Max characters from the transcript to send to the LLM (to control token costs). Use 0 for no limit.",
     )
     parser.add_argument(
         "--llm-max-output-tokens",
         type=int,
-        default=1600,
+        default=3000,
         help="Max completion tokens for the LLM response.",
     )
     parser.add_argument(
@@ -643,6 +646,38 @@ def load_log_table_from_lines(lines: Sequence[str]) -> Tuple[List[str], List[Dic
     return headers, rows
 
 
+def determine_default_start(
+    run_log_path: Path, today: dt.date
+) -> Tuple[dt.date, Optional[dt.datetime]]:
+    if not run_log_path.exists():
+        return today, None
+    headers, rows = load_log_table(run_log_path)
+    if not rows:
+        return today, None
+    run_field = "Run Date"
+    if run_field not in headers:
+        return today, None
+    latest: Optional[dt.datetime] = None
+    formats = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d")
+    for row in rows:
+        raw = row.get(run_field, "").strip()
+        if not raw:
+            continue
+        parsed = None
+        for fmt in formats:
+            try:
+                parsed = dt.datetime.strptime(raw, fmt)
+                break
+            except ValueError:
+                continue
+        if parsed and (latest is None or parsed > latest):
+            latest = parsed
+    if not latest:
+        return today, None
+    next_day = latest.date() + dt.timedelta(days=1)
+    return min(next_day, today), latest
+
+
 def load_html_table(text: str) -> Tuple[List[str], List[Dict[str, str]]]:
     headers: List[str] = []
     rows: List[Dict[str, str]] = []
@@ -1048,18 +1083,30 @@ def process(args: argparse.Namespace) -> None:
     fts_db = calibre_root / "full-text-search.db"
     log_dir = args.log_dir
     log_dir.mkdir(parents=True, exist_ok=True)
+    run_log_path = log_dir / "development_runs.md"
     debug_dir = None
     if args.llm_debug:
         debug_dir = args.llm_debug_dir or (log_dir / "llm_debug")
         debug_dir.mkdir(parents=True, exist_ok=True)
 
-    start_date = as_date(args.start)
+    resolved_start_note = ""
+    if args.start.lower() == "auto":
+        start_date, last_run = determine_default_start(run_log_path, dt.date.today())
+        if last_run:
+            last_run_label = last_run.strftime("%Y-%m-%d %H:%M:%S")
+            resolved_start_note = (
+                f" (auto resolved from {run_log_path}, last run {last_run_label})"
+            )
+        else:
+            resolved_start_note = f" (auto resolved from {run_log_path}, no prior runs)"
+    else:
+        start_date = as_date(args.start)
     end_date = as_date(args.end)
     tag_prefixes = args.tag_prefixes or list(MEETING_TAG_PREFIXES_DEFAULT)
     prefix_label = ", ".join(tag_prefixes)
     author_label = args.author or "any"
     print(
-        f"Processing meetings from {start_date} to {end_date} "
+        f"Processing meetings from {start_date} to {end_date}{resolved_start_note} "
         f"(tags={prefix_label}, author={author_label})."
     )
     print(
@@ -1083,6 +1130,7 @@ def process(args: argparse.Namespace) -> None:
     )
     if not meetings:
         print(f"No meetings tagged with prefixes ({prefix_label}) between {start_date} and {end_date}.")
+        update_development_log(run_log_path, [], args.dry_run)
         return
     print(f"Found {len(meetings)} meeting(s) matching filters.")
 
@@ -1159,6 +1207,7 @@ def process(args: argparse.Namespace) -> None:
 
     if not development_items:
         print("No development items identified.")
+        update_development_log(run_log_path, meetings, args.dry_run)
         return
     if args.dry_run:
         print(f"[dry-run] Would append {len(development_items)} development item(s).")
@@ -1169,6 +1218,7 @@ def process(args: argparse.Namespace) -> None:
         f"Processed {len(meetings)} meeting(s): appended {appended} development item(s) "
         f"to {csv_dir}."
     )
+    update_development_log(run_log_path, meetings, args.dry_run)
 
 
 def main() -> None:
